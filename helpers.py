@@ -42,10 +42,11 @@ def init_db():
     conn.close()
 
 # ─── Role-based checks ─────────────────────────────
-def is_pokecandidate(member: discord.Member) -> bool:
+def is_edate_gamer(member: discord.Member) -> bool:
     """Return True if member has either PokeCandidates or TEAM ROCKET roles."""
     role_names = {r.name.lower() for r in member.roles}
-    return ("pokecandidates" in role_names) or ("team rocket" in role_names)
+    allowed_roles = {"team rocket","catching pokemen", "catching pokewomen", "catching 'em all"}
+    return bool(role_names & allowed_roles)  # True if at least one matches
 
 
 def get_gender_emoji(member: discord.Member) -> str:
@@ -59,16 +60,21 @@ def get_gender_emoji(member: discord.Member) -> str:
     return "❓"
 
 
-def get_guild_contestants(guild: discord.Guild) -> List[discord.Member]:
-    """Return all members in the guild who have either PokeCandidates or TEAM ROCKET roles."""
-    poke_role = discord.utils.get(guild.roles, name="PokeCandidates")
-    rocket_role = discord.utils.get(guild.roles, name="TEAM ROCKET")
-    if not poke_role and not rocket_role:
+def get_guild_contestants(guild: discord.Guild) -> list[discord.Member]:
+    """Return all members in the guild who have at least one Catching role."""
+    catch_role_names = {"Catching PokeMen", "Catching PokeWomen", "Catching 'em all","Team Rocket"}
+
+    # Map role names to actual role objects
+    catch_roles = {role for role in guild.roles if role.name in catch_role_names}
+    if not catch_roles:
         return []
+
+    # Return members with at least one catch role (excluding bots)
     return [
-        m for m in guild.members
-        if not m.bot and (poke_role in m.roles or rocket_role in m.roles)
+        member for member in guild.members
+        if not member.bot and any(role in member.roles for role in catch_roles)
     ]
+
 
 # ─── Time helpers ─────────────────────────────
 def utc_today_str() -> str:
@@ -271,7 +277,3 @@ def load_json_file(filename: str, default: Any):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
     return default
-
-
-
-
