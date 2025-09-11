@@ -3,14 +3,14 @@ import random
 import re
 from datetime import date,datetime
 from typing import Optional, Dict, Union, List
-
+import os
 import discord
 from discord.ext import commands
 
 from helpers import (
     ADMIN_IDS, DB_PATH,
     ADMIN_DATE_LIMIT_PER_DAY, USER_DATE_LIMIT_PER_DAY,
-    init_db, is_admin, is_pokecandidate, get_gender_emoji, get_guild_contestants,
+    init_db, is_admin, is_edate_gamer, get_gender_emoji, get_guild_contestants,
     safe_send, TextPaginator, EmbedPaginator,
     count_sent_today, insert_record, get_pending_between, update_status,
     fetch_incoming_history, compute_points,load_json_file
@@ -45,8 +45,11 @@ class RocketDate(commands.Cog):
 
         # Feedback memory
         self.user_feedback_count: Dict[int, Dict[str, Union[int, Optional[date]]]] = {}
-      
-
+        # Role IDs
+        self.choose_roles_channel_id = int(os.getenv("CHOOSE_ROLES_CHANNEL_ID"))
+        self.catch_pokemen_id = int(os.getenv("CATCH_POKEMEN_ROLE_ID"))
+        self.catch_pokewomen_id = int(os.getenv("CATCH_POKEWOMEN_ROLE_ID"))
+        self.catch_all_id = int(os.getenv("CATCH_ALL_ROLE_ID"))
     # -------------------- MAIN GROUP --------------------
     @commands.group(name="tr", invoke_without_command=True)
     async def tr(self, ctx):
@@ -75,18 +78,34 @@ class RocketDate(commands.Cog):
         contestants = get_guild_contestants(ctx.guild)
         if not contestants:
             return await safe_send(ctx, "⚠️ No PokeCandidates found in this server.")
+
         contestants.sort(key=lambda m: m.display_name.lower())
-        lines = [f"{get_gender_emoji(m)} {m.display_name}" for m in contestants]
+
+        # Define your catch role IDs
+        CATCH_ROLE_IDS = {
+            "Catching PokeMen": self.catch_pokemen_id,
+            "Catching PokeWomen": self.catch_pokewomen_id,
+            "Catching 'em all": self.catch_all_id
+        }
+
+        lines = []
+        for m in contestants:
+            # Find which Catching roles the member has
+            member_roles = [name for name, rid in CATCH_ROLE_IDS.items() if discord.utils.get(m.roles, id=rid)]
+            role_text = ", ".join(member_roles) if member_roles else ""
+            lines.append(f"{get_gender_emoji(m)} {m.display_name} - {role_text}")
+
         page_size = 10
         embeds = []
         for i in range(0, len(lines), page_size):
             embed = discord.Embed(
                 title=f"🚀 Team Rocket PokeCandidates List ({len(contestants)})",
-                description="\n".join(lines[i:i+page_size]),
+                description="\n".join(lines[i:i + page_size]),
                 color=0xFF99FF
             )
             embed.set_footer(text="✨ Who will rise to the top of Team Rocket E-Date?")
             embeds.append(embed)
+
         paginator = EmbedPaginator(embeds)
         await paginator.start(ctx)
 
@@ -101,8 +120,12 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "❌ You cannot date yourself! 😼")
 
         # Role checks for participation
-        if not is_pokecandidate(sender) or not is_pokecandidate(member):
-            return await safe_send(ctx, "❌ Only PokeCandidates or TEAM ROCKET can participate in e-dates. 🚀")
+        if not is_edate_gamer(sender) or not is_edate_gamer(member):
+            return await safe_send(ctx,
+            f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
+            f"Catching roles include: <@&{self.catch_pokemen_id}>, <@&{self.catch_pokewomen_id}>, <@&{self.catch_all_id}>.\n"
+            f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
+            f"and assign yourself the Catching roles you're interested in.")
 
         # Daily limit check (no exceptions)
         limit = ADMIN_DATE_LIMIT_PER_DAY if is_admin(sender) else USER_DATE_LIMIT_PER_DAY
@@ -136,6 +159,15 @@ class RocketDate(commands.Cog):
     async def tr_date_yes(self, ctx, member: discord.Member):
         receiver = ctx.author
         record_id = get_pending_between(ctx.guild.id, member.id, receiver.id)  # ✅ consistent usage
+
+        # Role checks for participation
+        if not is_edate_gamer(receiver) or not is_edate_gamer(member):
+            return await safe_send(ctx,
+           f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
+           f"Catching roles include: <@&{self.catch_pokemen_id}>, <@&{self.catch_pokewomen_id}>, <@&{self.catch_all_id}>.\n"
+           f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
+           f"and assign yourself the Catching roles you're interested in.")
+
         if not record_id:
             return await safe_send(ctx, "❌ No pending request from this user! 💔")
 
@@ -155,6 +187,15 @@ class RocketDate(commands.Cog):
     async def tr_date_no(self, ctx, member: discord.Member, *, reason: str = ""):
         receiver = ctx.author
         record_id = get_pending_between(ctx.guild.id, member.id, receiver.id)  # ✅ consistent usage
+
+        # Role checks for participation
+        if not is_edate_gamer(receiver) or not is_edate_gamer(member):
+            return await safe_send(ctx,
+           f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
+           f"Catching roles include: <@&{self.catch_pokemen_id}>, <@&{self.catch_pokewomen_id}>, <@&{self.catch_all_id}>.\n"
+           f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
+           f"and assign yourself the Catching roles you're interested in.")
+
         if not record_id:
             return await safe_send(ctx, "❌ No pending request from this user! 💔")
 
@@ -176,7 +217,15 @@ class RocketDate(commands.Cog):
     @commands.cooldown(5, 60, commands.BucketType.user)
     async def tr_history(self, ctx, member: Optional[discord.Member] = None):
         member = member or ctx.author
-    
+
+        # Role checks for participation
+        if not is_edate_gamer(member):
+            return await safe_send(ctx,
+           f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
+           f"Catching roles include: <@&{self.catch_pokemen_id}>, <@&{self.catch_pokewomen_id}>, <@&{self.catch_all_id}>.\n"
+           f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
+           f"and assign yourself the Catching roles you're interested in.")
+
         rows = fetch_incoming_history(ctx.guild.id, member.id)
         if not rows:
             return await safe_send(ctx, f"{member.mention} has no incoming e-date history yet! 💔")
@@ -211,8 +260,6 @@ class RocketDate(commands.Cog):
     
         paginator = EmbedPaginator(embeds)
         await paginator.start(ctx)
-
-
 
     # -------------------- LEADERBOARD --------------------
     @tr.command(name="leaderboard", description="Check who’s topping the charts 💘")
