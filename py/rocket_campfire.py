@@ -4,9 +4,9 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 
-MAX_CAMPERS = 10
+MAX_CAMPERS = 15
 MIN_CAMPERS = 2
-JOIN_COUNTDOWN = 5
+JOIN_COUNTDOWN = 60
 CONFESS_TIMEOUT = 60  # in seconds
 REACTION_COUNTDOWN = 30  # 30s to react
 LIT_COOLDOWN_HOURS = 5
