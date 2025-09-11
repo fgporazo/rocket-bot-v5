@@ -7,7 +7,7 @@ import json
 from typing import Optional, Dict, Tuple, List, Union
 
 import discord
-from discord import Interaction
+from discord import Interaction, Message
 from discord.ext import commands
 from discord.ui import View, Button
 
@@ -28,6 +28,9 @@ TOTAL_ROUNDS: int = 10
 UserLike = Union[discord.User, discord.Member]
 
 # ========= HELPERS =========
+def has_any_role(member: discord.Member, role_names: set[str]) -> bool:
+    return bool({r.name for r in member.roles} & role_names)
+
 async def fetch_questions_and_codes(bot: commands.Bot) -> tuple[list[str], list[str]]:
     channel = bot.get_channel(ADMIN_MYSTERY_CHANNEL_ID)
     if not channel:
@@ -94,8 +97,14 @@ class MysteryDate(commands.Cog):
         self.ongoing_dates: Dict[int, bool] = {}
         self.thread_counters: Dict[Tuple[int, str], int] = {}
 
+        # Role IDs
+        self.choose_roles_channel_id = int(os.getenv("CHOOSE_ROLES_CHANNEL_ID"))
+        self.catch_pokemen_id = int(os.getenv("CATCH_POKEMEN_ROLE_ID"))
+        self.catch_pokewomen_id = int(os.getenv("CATCH_POKEWOMEN_ROLE_ID"))
+        self.catch_all_id = int(os.getenv("CATCH_ALL_ROLE_ID"))
+
     @commands.command(name="md")
-    async def md_start(self, ctx: commands.Context, action: Optional[str] = None) -> None:
+    async def md_start(self, ctx: commands.Context, action: Optional[str] = None) -> Message | None:
         guild = ctx.guild
         if not guild:
             return
@@ -111,6 +120,14 @@ class MysteryDate(commands.Cog):
         if action != "start":
             await ctx.send("❌ Wrong usage! Use `.md start` to begin a Mystery Date.")
             return
+
+        # Check if author has Catching roles
+        if not has_any_role(ctx.author, {"Catching PokeMen", "Catching PokeWomen", "Catching 'em all"}):
+            return await ctx.send(
+                f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
+                f"Catching roles include: <@&{self.catch_pokemen_id}>, <@&{self.catch_pokewomen_id}>, <@&{self.catch_all_id}>.\n"
+                f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
+                f"and assign yourself the Catching roles you're interested in.")
 
         guild_id = guild.id
         if self.ongoing_dates.get(guild_id, False):
@@ -186,18 +203,17 @@ class MysteryDate(commands.Cog):
             def is_name_taken(name: str) -> bool:
                 return any(t.name == name for t in existing_threads)
 
-            if next_idx == 1 and not is_name_taken(base_name):
-                thread_name = base_name
-            else:
-                idx = max(1, next_idx)
-                while True:
-                    candidate = f"{base_name} {idx}"
-                    if not is_name_taken(candidate):
-                        thread_name = candidate
-                        break
+            # Thread naming optimized
+            thread_name = base_name
+            if is_name_taken(thread_name):
+                idx = next_idx
+                while is_name_taken(f"{base_name} {idx}"):
                     idx += 1
-                next_idx = idx
-            self.thread_counters[counter_key] = next_idx + 1
+                thread_name = f"{base_name} {idx}"
+                next_idx = idx + 1
+            else:
+                next_idx += 1
+            self.thread_counters[counter_key] = next_idx
 
             starter_msg = (
                 "🚀 **Team Rocket Transmission:** A bold contestant has stepped into the arena! "
@@ -221,11 +237,17 @@ class MysteryDate(commands.Cog):
 
             # ----- SELECT PLAYER 2 -----
             eligible_members = [m for m in guild_contestants if m.id != player1.id]
+            player1_roles = {r.name for r in player1.roles}
+
+            if "Catching PokeMen" in player1_roles:
+                eligible_members = [m for m in eligible_members if has_any_role(m, {"Rocket PokeMan ♂️"})]
+            elif "Catching PokeWomen" in player1_roles:
+                eligible_members = [m for m in eligible_members if has_any_role(m, {"Rocket PokeWoman ♀️"})]
+
             if not eligible_members:
-                await thread.send(
-                    "<:emoji_8:1390365873717645393> Mission failed. No eligible Team Rocket PokeCandidates found."
-                )
+                await thread.send("🚫 No eligible compatible contestants found. Mission aborted!")
                 return
+
             player2 = random.choice(eligible_members)
             player2_code = random.choice([n for n in CODE_NAMES if n != player1_code] or [f"{player1_code}-2"])
 
