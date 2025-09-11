@@ -13,7 +13,7 @@ class RocketEscapeRoom(commands.Cog):
         self.testing_mode = True  # Set True for single-player testing
         # Get channel ID from env variable
         self.escape_story_channel_id = int(os.getenv("ADMIN_ESCAPE_STORY_CHANNEL_ID", 0))
-
+        self.join_countdown = 60
     # ----------------- Commands -----------------
     @commands.group(name="er", invoke_without_command=True)
     async def er(self, ctx):
@@ -66,10 +66,10 @@ class RocketEscapeRoom(commands.Cog):
         await ctx.send(f"👥 Minimum Players: {min_p} | Maximum Players: {max_p}")
 
         wait_msg = await ctx.send(
-            f"Type `.er join` to join the escape mission! Waiting 15 seconds for players... ⏳"
+            f"Type `.er join` to join the escape mission! Waiting {self.join_countdown} seconds for players... ⏳"
         )
 
-        countdown = 15
+        countdown = self.join_countdown
         for i in range(countdown, 0, -1):
             await wait_msg.edit(
                 content=f"Type `.er join` to join the escape mission! Waiting {i} seconds for players... ⏳"
