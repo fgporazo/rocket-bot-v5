@@ -91,8 +91,10 @@ class RocketDate(commands.Cog):
         lines = []
         for m in contestants:
             # Find which Catching roles the member has
-            member_roles = [name for name, rid in CATCH_ROLE_IDS.items() if discord.utils.get(m.roles, id=rid)]
-            role_text = ", ".join(member_roles) if member_roles else ""
+            member_roles = [discord.utils.get(m.guild.roles, id=rid) for name, rid in CATCH_ROLE_IDS.items() if
+                            discord.utils.get(m.roles, id=rid)]
+            # Convert to mentions instead of names
+            role_text = ", ".join(role.mention for role in member_roles) if member_roles else ""
             lines.append(f"{get_gender_emoji(m)} {m.display_name} - {role_text}")
 
         page_size = 10
@@ -339,7 +341,7 @@ class RocketDate(commands.Cog):
     async def tr_thunderbolt(self, ctx, member: Optional[discord.Member] = None):
         if not member:
             return await safe_send(ctx, "⚡ Who are we zapping? Use .tr thunderbolt @user")
-        if member.id in PROTECTED_IDS:
+        if is_admin(member):
             await ctx.send(random.choice(self.thunderbolt_protected_lines).format(
                 target=member.mention, name=ctx.author.mention
             ))
