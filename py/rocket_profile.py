@@ -13,6 +13,7 @@ DRAWING_SUBMISSION_CHANNEL = int(os.getenv("DRAWING_SUBMISSION_CHANNEL", 0)) if 
 # Format: {user_id: message_id}
 user_drawings = {}
 
+
 class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registration"):
     age = discord.ui.TextInput(label="🎂 Age", placeholder="Must be 18+")
     looking_for = discord.ui.TextInput(label="👀 Looking For", placeholder="💫Age range: , 🌍Location preference:")
@@ -21,7 +22,7 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
     hobbies = discord.ui.TextInput(label="🤭 Hobbies / Fun Fact About You", placeholder="Share something fun!", style=discord.TextStyle.paragraph, required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 1️⃣ Immediately acknowledge modal so it closes
+        # 1️⃣ Acknowledge modal so it closes
         await interaction.response.defer(ephemeral=True)
 
         if PROFILE_FORUM_ID is None:
@@ -55,30 +56,26 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
             f"🤭 Hobbies/Fun Fact About You: {self.hobbies.value or 'None'}"
         )
 
-        # Get the latest drawing attachment from the user
+        # Try to fetch latest drawing attachment
         file_to_attach = None
         if DRAWING_SUBMISSION_CHANNEL:
             try:
                 drawing_channel = interaction.client.get_channel(DRAWING_SUBMISSION_CHANNEL)
-                if not drawing_channel:
-                    print(f"[DEBUG] Drawing channel {DRAWING_SUBMISSION_CHANNEL} not found")
-                else:
-                    # Fetch recent messages, newest first
+                if drawing_channel:
                     async for msg in drawing_channel.history(limit=50, oldest_first=False):
                         if msg.author.id == interaction.user.id and msg.attachments:
-                            attachment = msg.attachments[0]  # Take the first attachment
+                            attachment = msg.attachments[0]
                             file_bytes = await attachment.read()
                             file_to_attach = discord.File(
-                                fp=io.BytesIO(file_bytes), filename=attachment.filename
+                                fp=io.BytesIO(file_bytes),
+                                filename=attachment.filename
                             )
                             print(f"[DEBUG] Found latest drawing: {attachment.filename}")
-                            break  # Stop after the latest attachment is found
-                    if not file_to_attach:
-                        print("[DEBUG] No drawing attachment found for user")
+                            break
+                else:
+                    print(f"[DEBUG] Drawing channel {DRAWING_SUBMISSION_CHANNEL} not found")
             except Exception as e:
                 print(f"[DEBUG] Failed to fetch latest drawing: {e}")
-                import traceback
-                traceback.print_exc()
 
         # Thread name
         thread_name = f"Profile: {interaction.user.display_name}"
@@ -89,10 +86,7 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
             thread = existing_threads[0]
             try:
                 first_message = await thread.fetch_message(thread.id)
-                kwargs = {"content": profile_content}
-                if file_to_attach:
-                    kwargs["attachments"] = [file_to_attach]
-                await first_message.edit(**kwargs)
+                await first_message.edit(content=profile_content)
             except Exception:
                 pass
             await interaction.followup.send(
@@ -100,13 +94,44 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
                 f"Check it out here: {thread.jump_url}", ephemeral=True
             )
         else:
-            # Create new thread with content and optional attachment
-            thread = await forum_channel.create_thread(name=thread_name, content=profile_content)
-            if file_to_attach:
-                await thread.send(file=file_to_attach)
+            # Create new thread (safe file handling)
+            try:
+                if file_to_attach:
+                    try:
+                        thread = await forum_channel.create_thread(
+                            name=thread_name,
+                            content=profile_content,
+                            files=[file_to_attach]  # ✅ put text + file in starter post
+                        )
+                    except discord.HTTPException as e:
+                        print(f"[DEBUG] File too large or failed attach: {e}")
+                        # Fallback: create thread with text only
+                        thread = await forum_channel.create_thread(
+                            name=thread_name,
+                            content=profile_content
+                        )
+                        # Try sending the file separately
+                        try:
+                            await thread.send(file=file_to_attach)
+                        except Exception as inner_e:
+                            print(f"[DEBUG] Could not send file separately: {inner_e}")
+                else:
+                    thread = await forum_channel.create_thread(
+                        name=thread_name,
+                        content=profile_content
+                    )
+            except Exception as e:
+                print(f"[DEBUG] Failed to create thread: {e}")
+                await interaction.followup.send(
+                    "❌ Something went wrong while creating your profile thread. Please tell an admin.",
+                    ephemeral=True
+                )
+                return
+
             await interaction.followup.send(
                 f"✅ Thanks {interaction.user.display_name}, you are now registered for Team Rocket matchmaking!\n"
-                f"Check your profile here: {thread.jump_url}", ephemeral=True
+                f"Check your profile here: {thread.jump_url}",
+                ephemeral=True
             )
 
 
