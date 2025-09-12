@@ -82,17 +82,36 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
         existing_threads = [t for t in forum_channel.threads if t.name == thread_name]
 
         if existing_threads:
-            # Update existing thread: edit first message
             thread = existing_threads[0]
             try:
                 first_message = await thread.fetch_message(thread.id)
-                await first_message.edit(content=profile_content)
-            except Exception:
-                pass
+
+                if file_to_attach:
+                    # Replace old content + attachment in the first message
+                    try:
+                        await first_message.edit(
+                            content=profile_content,
+                            attachments=[file_to_attach]  # ✅ put the file in the first message
+                        )
+                        print(f"[DEBUG] Updated first message with new attachment {file_to_attach.filename}")
+                    except Exception as e:
+                        print(f"[DEBUG] Could not edit first message with attachment: {e}")
+                        # fallback: just update text
+                        await first_message.edit(content=profile_content)
+                else:
+                    # No file, just update the text
+                    await first_message.edit(content=profile_content)
+
+            except Exception as e:
+                print(f"[DEBUG] Failed to edit existing thread: {e}")
+
             await interaction.followup.send(
                 f"✅ Thanks {interaction.user.display_name}, your profile has been updated!\n"
-                f"Check it out here: {thread.jump_url}", ephemeral=True
+                f"Check it out here: {thread.jump_url}",
+                ephemeral=True
             )
+
+
         else:
             # Create new thread (safe file handling)
             try:
