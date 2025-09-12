@@ -55,26 +55,29 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
             f"🤭 Hobbies/Fun Fact About You: {self.hobbies.value or 'None'}"
         )
 
-
-
         # Get the latest drawing attachment from the user
         file_to_attach = None
         if DRAWING_SUBMISSION_CHANNEL:
             try:
                 drawing_channel = interaction.client.get_channel(DRAWING_SUBMISSION_CHANNEL)
                 if not drawing_channel:
-                    print(f"[DEBUG] Channel {DRAWING_SUBMISSION_CHANNEL} not found")
+                    print(f"[DEBUG] Drawing channel {DRAWING_SUBMISSION_CHANNEL} not found")
                 else:
-                    # Fetch the latest messages from the channel (limit 50 for example)
-                    async for msg in drawing_channel.history(limit=50):
+                    # Fetch recent messages, newest first
+                    async for msg in drawing_channel.history(limit=50, oldest_first=False):
                         if msg.author.id == interaction.user.id and msg.attachments:
-                            attachment = msg.attachments[0]  # first attachment
+                            attachment = msg.attachments[0]  # Take the first attachment
                             file_bytes = await attachment.read()
-                            file_to_attach = discord.File(fp=io.BytesIO(file_bytes), filename=attachment.filename)
-                            break  # stop at the latest message
+                            file_to_attach = discord.File(
+                                fp=io.BytesIO(file_bytes), filename=attachment.filename
+                            )
+                            print(f"[DEBUG] Found latest drawing: {attachment.filename}")
+                            break  # Stop after the latest attachment is found
+                    if not file_to_attach:
+                        print("[DEBUG] No drawing attachment found for user")
             except Exception as e:
-                print(f"[DEBUG] Failed to fetch latest drawing image: {e}")
-                import traceback;
+                print(f"[DEBUG] Failed to fetch latest drawing: {e}")
+                import traceback
                 traceback.print_exc()
 
         # Thread name
