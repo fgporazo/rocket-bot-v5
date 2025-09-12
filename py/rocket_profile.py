@@ -1,45 +1,49 @@
 import os
+import io
 import discord
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
 
 load_dotenv()
-PROFILE_FORUM_ID = os.getenv("PROFILE_FORUM_ID")
-PROFILE_FORUM_ID = int(PROFILE_FORUM_ID) if PROFILE_FORUM_ID else None
+PROFILE_FORUM_ID = int(os.getenv("PROFILE_FORUM_ID", 0)) if os.getenv("PROFILE_FORUM_ID") else None
+DRAWING_SUBMISSION_CHANNEL = int(os.getenv("DRAWING_SUBMISSION_CHANNEL", 0)) if os.getenv("DRAWING_SUBMISSION_CHANNEL") else None
 
+# Example storage for user's drawing submissions (replace with your DB/JSON)
+# Format: {user_id: message_id}
+user_drawings = {}
 
 class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registration"):
-    age = discord.ui.TextInput(label="Your Age", placeholder="Must be 18+")
-    looking_for = discord.ui.TextInput(label="Looking For", placeholder="💫Age range: , 🌍Location preference:")
-    dealbreakers = discord.ui.TextInput(label="Dealbreakers", placeholder="List your dealbreakers", required=False)
-    top_traits = discord.ui.TextInput(label="Top 3 Traits You Want in a Partner", placeholder="Trait 1, Trait 2, Trait 3", required=False)
-    hobbies = discord.ui.TextInput(label="Hobbies / Fun Fact About You", placeholder="Share something fun!", style=discord.TextStyle.paragraph, required=False)
+    age = discord.ui.TextInput(label="🎂 Age", placeholder="Must be 18+")
+    looking_for = discord.ui.TextInput(label="👀 Looking For", placeholder="💫Age range: , 🌍Location preference:")
+    dealbreakers = discord.ui.TextInput(label="🚫 Dealbreakers", placeholder="List your dealbreakers", required=False)
+    top_traits = discord.ui.TextInput(label="🫶 Top 3 Traits You Want in a Partner", placeholder="Trait 1, Trait 2, Trait 3", required=False)
+    hobbies = discord.ui.TextInput(label="🤭 Hobbies / Fun Fact About You", placeholder="Share something fun!", style=discord.TextStyle.paragraph, required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # 1️⃣ Immediately acknowledge modal so it closes
+        await interaction.response.defer(ephemeral=True)
+
         if PROFILE_FORUM_ID is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ Registration forum channel is not configured. Please tell an admin.",
                 ephemeral=True
             )
             return
 
-        # Get the forum channel
         forum_channel = interaction.client.get_channel(PROFILE_FORUM_ID)
         if not isinstance(forum_channel, discord.ForumChannel):
+            await interaction.followup.send(
+                "❌ Forum channel is invalid.",
+                ephemeral=True
+            )
             return
-
-        # Prepare thread name
-        thread_name = f"Profile: {interaction.user.display_name}"
-
-        # Check if thread already exists
-        existing_threads = [t for t in forum_channel.threads if t.name == thread_name]
 
         # Gather user roles (excluding @everyone)
         roles = [role.mention for role in interaction.user.roles if role.name != "@everyone"]
         roles_display = ", ".join(roles) if roles else "No roles"
 
-        # Prepare the profile content
+        # Build the profile content
         profile_content = (
             f"📋 **My Profile**\n\n"
             f"👤 **User:** {interaction.user.mention}\n"
@@ -51,37 +55,55 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
             f"🤭 Hobbies/Fun Fact About You: {self.hobbies.value or 'None'}"
         )
 
+
+
+        # Get the latest drawing attachment from the user
+        file_to_attach = None
+        if DRAWING_SUBMISSION_CHANNEL:
+            try:
+                drawing_channel = interaction.client.get_channel(DRAWING_SUBMISSION_CHANNEL)
+                if not drawing_channel:
+                    print(f"[DEBUG] Channel {DRAWING_SUBMISSION_CHANNEL} not found")
+                else:
+                    # Fetch the latest messages from the channel (limit 50 for example)
+                    async for msg in drawing_channel.history(limit=50):
+                        if msg.author.id == interaction.user.id and msg.attachments:
+                            attachment = msg.attachments[0]  # first attachment
+                            file_bytes = await attachment.read()
+                            file_to_attach = discord.File(fp=io.BytesIO(file_bytes), filename=attachment.filename)
+                            break  # stop at the latest message
+            except Exception as e:
+                print(f"[DEBUG] Failed to fetch latest drawing image: {e}")
+                import traceback;
+                traceback.print_exc()
+
+        # Thread name
+        thread_name = f"Profile: {interaction.user.display_name}"
+        existing_threads = [t for t in forum_channel.threads if t.name == thread_name]
+
         if existing_threads:
+            # Update existing thread: edit first message
             thread = existing_threads[0]
             try:
-                # Update the first message in the existing thread
                 first_message = await thread.fetch_message(thread.id)
-                await first_message.edit(content=profile_content)
+                kwargs = {"content": profile_content}
+                if file_to_attach:
+                    kwargs["attachments"] = [file_to_attach]
+                await first_message.edit(**kwargs)
             except Exception:
                 pass
-            await interaction.response.send_message(
-                f"✅ Thanks {interaction.user.display_name}, your profile has been updated! "
-                f"Check it out here: {thread.jump_url}",
-                ephemeral=True
+            await interaction.followup.send(
+                f"✅ Thanks {interaction.user.display_name}, your profile has been updated!\n"
+                f"Check it out here: {thread.jump_url}", ephemeral=True
             )
         else:
-            # Create a new thread
-            thread = await forum_channel.create_thread(
-                name=thread_name,
-                content=profile_content
-            )
-
-            # Optional: pin the first message
-            try:
-                first_message = await thread.fetch_message(thread.id)
-                await first_message.pin()
-            except Exception:
-                pass
-
-            await interaction.response.send_message(
-                f"✅ Thanks {interaction.user.display_name}, you are now registered for Team Rocket matchmaking! "
-                f"Check your profile here: {thread.jump_url}",
-                ephemeral=True
+            # Create new thread with content and optional attachment
+            thread = await forum_channel.create_thread(name=thread_name, content=profile_content)
+            if file_to_attach:
+                await thread.send(file=file_to_attach)
+            await interaction.followup.send(
+                f"✅ Thanks {interaction.user.display_name}, you are now registered for Team Rocket matchmaking!\n"
+                f"Check your profile here: {thread.jump_url}", ephemeral=True
             )
 
 
@@ -97,8 +119,6 @@ class RocketProfileCog(commands.Cog):
                 ephemeral=True
             )
             return
-
-        # Open the registration modal
         await interaction.response.send_modal(RocketRegistrationForm())
 
 
