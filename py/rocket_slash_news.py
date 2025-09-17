@@ -34,13 +34,13 @@ if channel_id_str.isdigit():
 else:
     ANNOUNCEMENT_CHANNEL_ID = 0
 
-# ---------------- RocketSlashNews Cog ----------------
+
 class RocketSlashNews(commands.Cog):
     MAX_ACTIVE_SCROLLS = 2  # limit simultaneous tickers
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.active_users_per_message = {}  # track reactions per message
+        self.active_users_per_message = {}  # track reactions per announcement
         self.active_scrolls = []
 
     # ---------------- Rocket News Command ----------------
@@ -60,7 +60,6 @@ class RocketSlashNews(commands.Cog):
         details: str,
         ticker: str = None
     ):
-        # ✅ ID-based admin check
         if not is_admin(interaction):
             await interaction.response.send_message(
                 "🚫 Only admins can use this command.", ephemeral=True
@@ -76,31 +75,24 @@ class RocketSlashNews(commands.Cog):
             color=Color.red()
         )
 
-        # ---------------- Buttons ----------------
         class BroadcastButtons(View):
             @discord.ui.button(label="🔵 ON", style=discord.ButtonStyle.success)
             async def on_button(self, interaction: discord.Interaction, button: Button):
                 button.disabled = True
                 await interaction.message.edit(view=self)
-                await interaction.response.send_message(
-                    "You clicked ON! ⚡ Just a flashy design!", ephemeral=True
-                )
+                await interaction.response.send_message("You clicked ON! ⚡", ephemeral=True)
 
             @discord.ui.button(label="⚫ OFF", style=discord.ButtonStyle.danger)
             async def off_button(self, interaction: discord.Interaction, button: Button):
                 button.disabled = True
                 await interaction.message.edit(view=self)
-                await interaction.response.send_message(
-                    "You clicked OFF! ⚡ Just a flashy design!", ephemeral=True
-                )
+                await interaction.response.send_message("You clicked OFF! ⚡", ephemeral=True)
 
             @discord.ui.button(label="🟡 Channel R", style=discord.ButtonStyle.secondary)
             async def channel_button(self, interaction: discord.Interaction, button: Button):
                 button.disabled = True
                 await interaction.message.edit(view=self)
-                await interaction.response.send_message(
-                    "You clicked Channel R! ⚡ Just a flashy design!", ephemeral=True
-                )
+                await interaction.response.send_message("You clicked Channel R! ⚡", ephemeral=True)
 
         view = BroadcastButtons()
 
@@ -109,11 +101,17 @@ class RocketSlashNews(commands.Cog):
         except discord.errors.InteractionResponded:
             return
 
+        # ✅ Auto-add reactions
+        for emoji in ["👀", "🫶", "🔥", "⭐", "🙌"]:
+            try:
+                await embed_msg.add_reaction(emoji)
+            except discord.HTTPException:
+                pass
+
         # ---------------- Scroll ticker ----------------
         async def scroll_ticker():
             if len(self.active_scrolls) >= self.MAX_ACTIVE_SCROLLS:
-                return  # skip scrolling to reduce memory/API load
-
+                return
             self.active_scrolls.append(embed_msg.id)
             text = full_ticker + "   "
             try:
@@ -125,13 +123,13 @@ class RocketSlashNews(commands.Cog):
                             await embed_msg.edit(embed=embed)
                         except discord.NotFound:
                             return
-                        await asyncio.sleep(0.8)  # slower updates for less load
+                        await asyncio.sleep(0.8)
             finally:
                 self.active_scrolls.remove(embed_msg.id)
 
         asyncio.create_task(scroll_ticker())
 
-    # ---------------- Reaction Listener with Rocket magic ----------------
+    # ---------------- Reaction Listener ----------------
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         if user.bot:
@@ -143,14 +141,18 @@ class RocketSlashNews(commands.Cog):
         if not reaction.message.embeds:
             return
 
-        msg_id = reaction.message.id
-        if msg_id not in self.active_users_per_message:
-            self.active_users_per_message[msg_id] = {
-                "users": [],
-                "popup_msg": None
-            }
+        # ---------------- IGNORE reactions on popup messages ----------------
+        if any(tracker.get("popup_msg") and tracker["popup_msg"].id == reaction.message.id
+               for tracker in self.active_users_per_message.values()):
+            return  # do nothing if reaction is on popup
 
-        tracker = self.active_users_per_message[msg_id]
+        msg_id = reaction.message.id
+        tracker = self.active_users_per_message.get(msg_id)
+
+        if not tracker:
+            # If no popup tracked yet, create tracker
+            tracker = {"users": [], "popup_msg": None}
+            self.active_users_per_message[msg_id] = tracker
 
         if user.id in tracker["users"]:
             return
@@ -161,9 +163,9 @@ class RocketSlashNews(commands.Cog):
 
         # ---------------- Prepare embed ----------------
         order_texts = [
-            "first to react to the announcement! Thank you for keeping an eye out!",
+            "first to react! 🚀",
             "second to react! Team Rocket salutes you!",
-            "third to react and witness our Rocket glory!",
+            "third to react and witness our glory!",
             "fourth to react! Chaos intensifies!",
             "fifth to react! You rock!"
         ]
@@ -172,9 +174,7 @@ class RocketSlashNews(commands.Cog):
         rocket_texts = []
         for idx, uid in enumerate(tracker["users"]):
             try:
-                member = reaction.message.guild.get_member(uid)
-                if member is None:
-                    member = await reaction.message.guild.fetch_member(uid)
+                member = reaction.message.guild.get_member(uid) or await reaction.message.guild.fetch_member(uid)
                 mention = member.mention
             except discord.NotFound:
                 mention = f"<@{uid}>"
@@ -188,8 +188,9 @@ class RocketSlashNews(commands.Cog):
             description=rocket_text,
             color=Color.red()
         )
-        embed.set_thumbnail(url=chosen_gif)  # small GIF thumbnail
+        embed.set_thumbnail(url=chosen_gif)
 
+        # ---------------- Update or create popup ----------------
         if tracker["popup_msg"] is None:
             tracker["popup_msg"] = await reaction.message.channel.send(embed=embed)
         else:
@@ -198,12 +199,13 @@ class RocketSlashNews(commands.Cog):
             except discord.NotFound:
                 tracker["popup_msg"] = await reaction.message.channel.send(embed=embed)
 
-        # ---------------- Auto-clean old entries ----------------
-        asyncio.create_task(self.cleanup_message(msg_id, delay=900))  # 15 min
+        # Auto-clean old entries
+        asyncio.create_task(self.cleanup_message(msg_id, delay=900))
 
     async def cleanup_message(self, msg_id, delay=900):
         await asyncio.sleep(delay)
         self.active_users_per_message.pop(msg_id, None)
+
 
 # ---------------- Setup Cog ----------------
 async def setup(bot: commands.Bot):
