@@ -51,8 +51,11 @@ class RocketEscapeRoom(commands.Cog):
         # --- AUTO-JOIN the author ---
         self.active_rooms[guild_id]["players"].add(ctx.author.id)
         trapped_role = discord.utils.get(ctx.guild.roles, name="Trapped")
+        pokecandidate_role = discord.utils.get(ctx.guild.roles, name="PokeCandidates")
         if trapped_role:
             await ctx.author.add_roles(trapped_role, reason="Started escape mission")
+        if pokecandidate_role:
+            await ctx.author.remove_roles(pokecandidate_role)
 
         intro = story["intro"]
         embed = discord.Embed(
@@ -86,6 +89,7 @@ class RocketEscapeRoom(commands.Cog):
                 member = ctx.guild.get_member(pid)
                 if member and trapped_role and trapped_role in member.roles:
                     await member.remove_roles(trapped_role, reason="Mission canceled - not enough players")
+                    await member.add_roles(trapped_role)
             del self.active_rooms[guild_id]
             return
 
@@ -114,9 +118,11 @@ class RocketEscapeRoom(commands.Cog):
         room["players"].add(player.id)
 
         trapped_role = discord.utils.get(ctx.guild.roles, name="Trapped")
+        pokecandidate_role = discord.utils.get(ctx.guild.roles, name="PokeCandidates")
         if trapped_role:
             await player.add_roles(trapped_role, reason="Joined escape mission")
-
+        if pokecandidate_role:
+            await player.remove_roles(pokecandidate_role)
         await ctx.send(f"✅ {player.mention} joined the escape crew! ({len(room['players'])} players now)")
 
     # ----------------- Fetch latest JSON from channel -----------------
@@ -143,7 +149,7 @@ class RocketEscapeRoom(commands.Cog):
         puzzles = story["puzzles"]
         guild = ctx.guild
         trapped_role = discord.utils.get(guild.roles, name="Trapped")
-
+        pokecandidate_role = discord.utils.get(guild.roles, name="PokeCandidates")
         # Get all player Member objects
         players = []
         for pid in room["players"]:
@@ -181,6 +187,7 @@ class RocketEscapeRoom(commands.Cog):
                     if p and trapped_role and trapped_role in p.roles:
                         try:
                             await p.remove_roles(trapped_role, reason="Failed escape mission")
+                            await p.add_roles(pokecandidate_role)
                         except:
                             pass
                 for p in players:
@@ -198,6 +205,7 @@ class RocketEscapeRoom(commands.Cog):
             if p and trapped_role and trapped_role in p.roles:
                 try:
                     await p.remove_roles(trapped_role, reason="Escape mission success")
+                    await p.add_roles(pokecandidate_role)
                 except:
                     pass
 
