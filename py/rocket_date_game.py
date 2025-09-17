@@ -300,6 +300,11 @@ class RocketDate(commands.Cog):
     async def roast(self, ctx, member: Optional[discord.Member] = None):
         if not member:
             return await safe_send(ctx, "🔥 Who’s the victim? Use .tr roast @someone!")
+        if is_admin(member):
+            await ctx.send(random.choice(self.thunderbolt_protected_lines).format(
+                target=member.mention, name=ctx.author.mention
+            ))
+            return
         if not self.roast_queue:
             self.roast_queue = self.roast_lines.copy()
             random.shuffle(self.roast_queue)
