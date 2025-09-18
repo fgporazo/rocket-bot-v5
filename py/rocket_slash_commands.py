@@ -21,12 +21,11 @@ CLICK_TRACKER: dict[int, dict[str, list[float]]] = {}
 # ----------------- Command Button -----------------
 class CommandButton(discord.ui.Button):
     def __init__(self, label: str, command: str, style: discord.ButtonStyle, bot: commands.Bot,
-                 channel_id: str | None = None, create_thread: bool = True, dm_notify: bool = False):
+                 channel_ids: list[str] | None = None, dm_notify: bool = False):
         super().__init__(label=label, style=style, custom_id=f"btn_{label}")
         self.command = command
         self.bot = bot
-        self.channel_id = channel_id
-        self.create_thread = create_thread
+        self.channel_ids = channel_ids or []
         self.dm_notify = dm_notify
         self.cooldown_seconds = 300  # 5 minutes
 
@@ -70,62 +69,43 @@ class CommandButton(discord.ui.Button):
         except discord.InteractionResponded:
             pass
 
+        # ----------------- Send to DM if required -----------------
+        if self.dm_notify:
+            try:
+                await interaction.user.send(f"💌 Executed command: `{self.command}`")
+            except discord.Forbidden:
+                await interaction.followup.send("🚀 I couldn't DM you, enable DMs.", ephemeral=True)
+
+        # ----------------- Send command to all channels -----------------
         if not interaction.guild:
-            await interaction.followup.send("❌ Cannot use this command in DMs.", ephemeral=True)
+            await interaction.followup.send("❌ Cannot use this command in DMs for channels.", ephemeral=True)
             return
 
-        target_channel = interaction.guild.get_channel(int(self.channel_id)) if self.channel_id else interaction.channel
-        if target_channel is None:
-            await interaction.followup.send("❌ Channel not found.", ephemeral=True)
-            return
+        sent_channels = []
+        for cid in self.channel_ids:
+            target_channel = interaction.guild.get_channel(int(cid))
+            if target_channel:
+                fake_message = await target_channel.send(f"💥 `{self.command}` triggered by {interaction.user.mention}")
+                fake_message.author = interaction.user
+                fake_message.content = self.command
+                ctx = await self.bot.get_context(fake_message, cls=commands.Context)
+                if ctx.command:
+                    await self.bot.invoke(ctx)
+                await fake_message.delete()
+                sent_channels.append(target_channel.name)
 
-        # ----------------- Thread -----------------
-        target_thread = None
-        if self.create_thread and isinstance(target_channel, discord.TextChannel):
-            target_thread = discord.utils.get(target_channel.threads, name=self.label)
-            if not target_thread:
-                target_thread = await target_channel.create_thread(
-                    name=self.label or "Unnamed",
-                    type=discord.ChannelType.public_thread,
-                    auto_archive_duration=10080,
-                    reason=f"Rocket Bot auto-created thread for {self.label}"
-                )
-
-        run_channel = target_thread or target_channel
-        if not isinstance(run_channel, (discord.TextChannel, discord.Thread, discord.DMChannel, discord.GroupChannel)):
-            await interaction.followup.send("❌ Cannot execute commands here.", ephemeral=True)
-            return
-
-        # ----------------- Execute command -----------------
-        content = self.command
-        rocket_click_lines = [
-            "💋 Jessie: `{label}` clicked—check your DMs!",
-            "🎩 James: `{label}` clicked—Team Rocket’s watching!",
-            "😼 Meowth: `{label}` clicked? Bold move, twerp!"
-        ]
-        fake_message = await run_channel.send(random.choice(rocket_click_lines).format(label=self.label))
-        fake_message.author = interaction.user
-        fake_message.content = content
-        ctx = await self.bot.get_context(fake_message, cls=commands.Context)
-        if not ctx.command:
-            await fake_message.delete()
-            await interaction.followup.send(f"❌ Command `{content}` not found.", ephemeral=True)
-            return
-        await self.bot.invoke(ctx)
-        await fake_message.delete()
-
-        # ----------------- Notify user -----------------
-        try:
-            thread_name = getattr(target_thread, "name", None) if target_thread else None
-            if self.dm_notify and target_thread:
-                await interaction.followup.send(f"✅ Go to [**{thread_name}**]({target_thread.jump_url}) and check your DMs!", ephemeral=True)
-            elif target_thread:
-                await interaction.followup.send(f"✅ Go to [**{thread_name}**]({target_thread.jump_url})", ephemeral=True)
+        if sent_channels:
+            # Create clickable channel mentions
+            channel_mentions = []
+            for cid in self.channel_ids:
+                channel = interaction.guild.get_channel(int(cid))
+                if channel:
+                    channel_mentions.append(channel.mention)
+            if channel_mentions:
+                await interaction.followup.send(f"✅ Go to: {', '.join(channel_mentions)}", ephemeral=True)
             else:
-                channel_name = getattr(target_channel, "name", "Unknown Channel")
-                await interaction.followup.send(f"✅ Go to [**{channel_name}**]({target_channel.jump_url})", ephemeral=True)
-        except discord.NotFound:
-            pass
+                await interaction.followup.send("⚠️ No valid channels found to send this command.", ephemeral=True)
+
 
 # ----------------- RocketListView -----------------
 class RocketListView(View):
@@ -145,16 +125,16 @@ class RocketListView(View):
                     command=button_data.get("command", ""),
                     style=section_style,
                     bot=bot,
-                    channel_id=button_data.get("channel_id"),
-                    create_thread=button_data.get("thread", True),
+                    channel_ids=button_data.get("channel_ids", []),
                     dm_notify=button_data.get("DM", False)
                 )
             )
+
+
 # ----------------- RocketSlash Cog -----------------
 class RocketSlash(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.keep_threads_alive.start()
 
     # ----------------- Fetch Latest JSON -----------------
     async def fetch_latest_json(self):
@@ -208,102 +188,7 @@ class RocketSlash(commands.Cog):
         embed.add_field(name="2️⃣ James (Layli)", value="🌻 Chaos Catalyst of Digital", inline=False)
         embed.add_field(name="3️⃣ Meowth (Joa)", value="😼 Official Translator & Mischief Manager", inline=False)
         await interaction.response.send_message(embed=embed)
-    # ---------- Rocket Escape Room ----------
-    @app_commands.command(name="rocket-escape-room", description="Show Rocket Escape Room Menu (Admins only).")
-    async def rocket_escape_room(self, interaction: discord.Interaction):
-        if not is_admin(interaction.user):
-            return await interaction.response.send_message(
-                "🚫 Only admins can use this command.", ephemeral=True
-            )
 
-        # ----------------- Embed Title & Description -----------------
-        channel_name_or_id = os.getenv("ADMIN_ESCAPE_STORY_CHANNEL_ID")
-        escape_channel = None
-        if channel_name_or_id and interaction.guild:
-            escape_channel = (
-                interaction.guild.get_channel(int(channel_name_or_id)) if channel_name_or_id.isdigit()
-                else discord.utils.get(interaction.guild.text_channels, name=channel_name_or_id)
-            )
-
-        title = "🚪 Team Rocket Escape Room"
-        description = "Join the madness and help Team Rocket!"
-
-        if escape_channel:
-            last_message = None
-            async for msg in escape_channel.history(limit=50):
-                if msg.content.strip():
-                    last_message = msg
-                    break
-            if last_message:
-                lines = last_message.content.split("\n")
-                title = lines[0] if lines else title
-                description = "\n".join(lines[1:]) if len(lines) > 1 else description
-
-        embed = discord.Embed(
-            title=title,
-            description=description,
-            color=discord.Color.red()
-        )
-
-        class EscapeRoomButton(discord.ui.Button):
-            def __init__(self, bot: commands.Bot):
-                super().__init__(label="Join Escape Room", style=discord.ButtonStyle.success)
-                self.bot = bot
-
-            async def callback(self, interaction: discord.Interaction):
-                guild = interaction.guild
-                if guild is None:
-                    return await interaction.response.send_message(
-                        "❌ This button can only be used in a server.", ephemeral=True
-                    )
-
-                escape_channel = discord.utils.get(guild.channels, name="🚪🔐-escape-room")
-                if not escape_channel:
-                    return await interaction.response.send_message(
-                        "❌ No escape room channel found! Please ask an admin to create one.",
-                        ephemeral=True
-                    )
-
-                active_thread = None
-                if isinstance(escape_channel, discord.TextChannel):
-                    for thread in escape_channel.threads:
-                        if not thread.archived:
-                            active_thread = thread
-                            break
-
-                if active_thread:
-                    await interaction.response.send_message(
-                        f"🚪 The escape room is ready in {active_thread.mention}! ✅ Head there and type **.er join** or **.er start**.",
-                        ephemeral=True)
-                else:
-                    await interaction.response.send_message(
-                        "⚠️ No active escape room found. Return to Rocket Bot channel and click Escape Room to start a new game!",
-                        ephemeral=True
-                    )
-
-        view = discord.ui.View(timeout=None)
-        view.add_item(EscapeRoomButton(self.bot))
-        await interaction.response.send_message(embed=embed, view=view)
-
-    # ----------------- Keep Threads Alive -----------------
-    @tasks.loop(hours=24)
-    async def keep_threads_alive(self):
-        await self.bot.wait_until_ready()
-        data = await self.fetch_latest_json()
-        if not data:
-            return
-        thread_emojis = data.get("thread_emojis", [])
-        for guild in self.bot.guilds:
-            for thread in guild.threads:
-                if any(thread.name.startswith(e) for e in thread_emojis):
-                    try:
-                        await thread.send("\u200b", delete_after=1)
-                    except Exception:
-                        continue
-
-    @keep_threads_alive.before_loop
-    async def before_keep_threads_alive(self):
-        await self.bot.wait_until_ready()
 
 # ----------------- Cog Setup -----------------
 async def setup(bot: commands.Bot):
