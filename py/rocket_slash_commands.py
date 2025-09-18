@@ -178,6 +178,83 @@ class RocketSlash(commands.Cog):
             else:
                 await interaction.followup.send(embed=embed, view=view)
 
+    # ---------- Rocket Escape Room ----------
+    @app_commands.command(name="rocket-escape-room", description="Show Rocket Escape Room Menu (Admins only).")
+    async def rocket_escape_room(self, interaction: discord.Interaction):
+        if not is_admin(interaction.user):
+            return await interaction.response.send_message(
+                "🚫 Only admins can use this command.", ephemeral=True
+            )
+
+        # ----------------- Embed Title & Description -----------------
+        channel_name_or_id = os.getenv("ADMIN_ESCAPE_STORY_CHANNEL_ID")
+        escape_channel = None
+        if channel_name_or_id and interaction.guild:
+            escape_channel = (
+                interaction.guild.get_channel(int(channel_name_or_id)) if channel_name_or_id.isdigit()
+                else discord.utils.get(interaction.guild.text_channels, name=channel_name_or_id)
+            )
+
+        title = "🚪 Team Rocket Escape Room"
+        description = "Join the madness and help Team Rocket!"
+
+        if escape_channel:
+            last_message = None
+            async for msg in escape_channel.history(limit=50):
+                if msg.content.strip():
+                    last_message = msg
+                    break
+            if last_message:
+                lines = last_message.content.split("\n")
+                title = lines[0] if lines else title
+                description = "\n".join(lines[1:]) if len(lines) > 1 else description
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=discord.Color.red()
+        )
+
+        class EscapeRoomButton(discord.ui.Button):
+            def __init__(self, bot: commands.Bot):
+                super().__init__(label="Join Escape Room", style=discord.ButtonStyle.success)
+                self.bot = bot
+
+            async def callback(self, interaction: discord.Interaction):
+                guild = interaction.guild
+                if guild is None:
+                    return await interaction.response.send_message(
+                        "❌ This button can only be used in a server.", ephemeral=True
+                    )
+
+                escape_channel = discord.utils.get(guild.channels, name="🚪🔐-escape-room")
+                if not escape_channel:
+                    return await interaction.response.send_message(
+                        "❌ No escape room channel found! Please ask an admin to create one.",
+                        ephemeral=True
+                    )
+
+                active_thread = None
+                if isinstance(escape_channel, discord.TextChannel):
+                    for thread in escape_channel.threads:
+                        if not thread.archived:
+                            active_thread = thread
+                            break
+
+                if active_thread:
+                    await interaction.response.send_message(
+                        f"🚪 The escape room is ready in {active_thread.mention}! ✅ Head there and type **.er join** or **.er start**.",
+                        ephemeral=True)
+                else:
+                    await interaction.response.send_message(
+                        "⚠️ No active escape room found. Return to Rocket Bot channel and click Escape Room to start a new game!",
+                        ephemeral=True
+                    )
+
+        view = discord.ui.View(timeout=None)
+        view.add_item(EscapeRoomButton(self.bot))
+        await interaction.response.send_message(embed=embed, view=view)
+    
     # ----------------- Rocket Members -----------------
     @app_commands.command(name="rocket-members", description="👥 View Team Rocket Admin")
     async def rocket_members(self, interaction: discord.Interaction):
