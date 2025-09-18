@@ -1,19 +1,25 @@
 # rocket_secret_admirer.py
+import os
 import discord
 from discord.ext import commands
 import random
 from datetime import datetime
 import re
 
-sessions = {}  # {user_id: guild_id}
-user_cooldowns = {}  # {user_id: datetime of last confession}
-user_daily_count = {}  # {user_id: {"count": int, "date": "YYYY-MM-DD"}}
+# ----------------------
+# Config / Environment
+# ----------------------
+SECRET_ADMIRER_CHANNEL_ID = int(os.getenv("SECRET_ADMIRER_CHANNEL_ID", 0))
 
 COOLDOWN_SECONDS = 60  # 1 minute between confessions
 MAX_DAILY = 3  # max confessions per day
 MAX_SIZE_MB = 5  # max attachment size
 ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 MAX_WORDS = 500
+
+sessions = {}  # {user_id: guild_id}
+user_cooldowns = {}  # {user_id: datetime of last confession}
+user_daily_count = {}  # {user_id: {"count": int, "date": "YYYY-MM-DD"}}
 
 CONFESSIONS = [
     "You light up my Pokéworld like a Shiny encounter. ✨",
@@ -39,6 +45,9 @@ GIFS = [
     "https://pa1.aminoapps.com/6331/acc96e0f5c2fae2aaed478df2c5d4597245bad90_00.gif"
 ]
 
+# ----------------------
+# Helper Functions
+# ----------------------
 def can_send_today(user_id: int) -> bool:
     today = datetime.utcnow().date().isoformat()
     data = user_daily_count.get(user_id)
@@ -50,6 +59,9 @@ def can_send_today(user_id: int) -> bool:
 def increment_daily(user_id: int):
     user_daily_count[user_id]["count"] += 1
 
+# ----------------------
+# Secret Admirer Cog
+# ----------------------
 class SecretAdmirer(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -189,51 +201,33 @@ class SecretAdmirer(commands.Cog):
         guild = self.bot.get_guild(guild_id)
         if not guild:
             return await ctx.send("⚠️ Could not find the server session. Try `.sa` again from the server.")
-    
-        # Find or create 💌 Secret Admirer thread
-        thread = discord.utils.get(guild.threads, name="💌 Secret Admirer")
-        if not thread:
-            channel = discord.utils.get(guild.text_channels, permissions__send_messages=True)
-            if not channel:
-                return await ctx.send("⚠️ No suitable text channel found to create the thread.")
-    
-            thread = await channel.create_thread(
-                name="💌 Secret Admirer",
-                type=discord.ChannelType.public_thread,
-                auto_archive_duration=10080  # 7 days
-            )
-    
-        try:
-            await thread.add_user(guild.me)
-        except discord.HTTPException:
-            pass  # already in thread
-    
-        if thread.archived:
-            await thread.edit(archived=False)
-    
+
+        channel = guild.get_channel(SECRET_ADMIRER_CHANNEL_ID)
+        if not channel:
+            return await ctx.send("⚠️ Secret Admirer channel not found. Please check the configuration.")
+
         embed = discord.Embed(
             title="💌 Secret Admirer Confession 💌",
             description=f"**To:** {receiver}\n\n**Message:** {message_text}",
             color=discord.Color.pink()
         )
-    
+
         if image_url:
             embed.set_image(url=image_url)
         else:
             embed.set_image(url=random.choice(GIFS))
-    
-        # Send confession to thread
-        await thread.send(embed=embed)
-    
-        # Send DM with confirmation and thread link
+
+        await channel.send(embed=embed)
+
         await ctx.send(
-            f"✅ Your confession has been sent anonymously to the 💌 Secret Admirer thread!\n"
-            f"💫 You can view the thread here: {thread.jump_url}"
+            f"✅ Your confession has been sent anonymously to {channel.mention}!\n"
+            f"💫 Check it out there!"
         )
-    
+
         del sessions[ctx.author.id]
 
-
-
+# ----------------------
+# Setup
+# ----------------------
 async def setup(bot):
     await bot.add_cog(SecretAdmirer(bot))
