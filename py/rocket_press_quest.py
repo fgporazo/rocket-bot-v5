@@ -28,7 +28,7 @@ class PressQuest(commands.Cog):
         help_text = "\n".join(commands_list)
         await ctx.send(f"📖 **Team Rocket Press Quest (Quick Blast-Off Survey) Commands Guide**\n{help_text}")
 
-    @pq.command(name="start")
+    @pq.command(name="start",help="start a to answer a quick blast-off survey")
     async def pq_start(self, ctx):
         user_id = ctx.author.id
         now = asyncio.get_event_loop().time()
