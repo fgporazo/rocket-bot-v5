@@ -5,6 +5,7 @@ from PIL import Image
 import aiohttp
 import io
 import os
+from helpers import (award_points)
 
 # Read admin IDs from environment variable
 ADMIN_IDS = set(int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip())
@@ -82,10 +83,10 @@ class VillainShip(commands.Cog):
             color=discord.Color.red()
         )
         embed.set_image(url="attachment://duo.png")
-        embed.add_field(name="Team Rocket Thoughts", value=message)
+        embed.add_field(name="", value=message)
 
         await loading.edit(content=None, embed=embed, attachments=[file])
-
+        await award_points(self.bot, ctx.author, 10, notify_channel=ctx.channel)
     @commands.command()
     @commands.cooldown(20, 300, commands.BucketType.user)
     async def trio(self, ctx, member1: discord.Member = None, member2: discord.Member = None):
@@ -117,10 +118,10 @@ class VillainShip(commands.Cog):
             color=discord.Color.dark_red()
         )
         embed.set_image(url="attachment://trio.png")
-        embed.add_field(name="Team Rocket Thoughts", value=message)
+        embed.add_field(name="", value=message)
 
         await loading.edit(content=None, embed=embed, attachments=[file])
-
+        await award_points(self.bot, ctx.author, 10, notify_channel=ctx.channel)
     @duo.error
     @trio.error
     async def cooldown_error(self, ctx, error):
