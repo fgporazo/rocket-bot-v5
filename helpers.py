@@ -2,6 +2,7 @@
 # helpers.py (refactored)
 # =============================
 import os
+import asyncio
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -9,7 +10,8 @@ from typing import List, Optional, Union, Any, Dict, Tuple
 
 import discord
 from discord.ext import commands
-
+from dotenv import load_dotenv
+load_dotenv()
 # ─── Database Path ─────────────────────────────
 #DB_PATH = "/data/rocket.db"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -277,3 +279,85 @@ def load_json_file(filename: str, default: Any):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
     return default
+
+
+LEADERBOARD_LOCK = asyncio.Lock()
+channel_id = int(os.getenv("LEADERBOARD_CHANNEL_ID", 0))
+async def award_points(
+    bot: discord.Client,
+    user: discord.Member,
+    points: int = 1,
+    notify_channel=None,
+    dm=False
+):
+    if channel_id is None:
+        print("[DEBUG] No leaderboard channel provided.")
+        return
+
+    # Fetch leaderboard channel
+    channel = bot.get_channel(channel_id) or await bot.fetch_channel(channel_id)
+    if not channel:
+        print(f"[DEBUG] Leaderboard channel {channel_id} not found.")
+        return
+
+    async with LEADERBOARD_LOCK:
+        # Get last message
+        try:
+            msg = [m async for m in channel.history(limit=1, oldest_first=False)][0]
+        except IndexError:
+            # No leaderboard exists yet
+            msg = await channel.send(f"{user.display_name} - {user.id} - {points}")
+            if notify_channel:
+                await notify_channel.send(f"💎 {user.mention} earned **{points} points**!")
+            return
+
+        lines = msg.content.splitlines()
+        user_found = False
+        new_lines = []
+
+        for line in lines:
+            parts = [p.strip() for p in line.split("-")]
+            if len(parts) != 3:
+                new_lines.append(line)
+                continue
+
+            name, uid_str, pts_str = parts
+            try:
+                uid = int(uid_str)
+                pts = int(pts_str)
+            except:
+                new_lines.append(line)
+                continue
+
+            if uid == user.id:
+                pts += points
+                user_found = True
+                new_lines.append(f"{name} - {uid} - {pts}")
+            else:
+                new_lines.append(line)
+
+        # If user not found, add them
+        if not user_found:
+            new_lines.append(f"{user.display_name} - {user.id} - {points}")
+
+        # Edit the last leaderboard message
+        await msg.edit(content="\n".join(new_lines))
+
+        message = f"💎 {user.display_name} earned {points} gems!"
+
+        if dm:
+            try:
+                await user.send(message)  # Send DM
+            except discord.Forbidden:
+                # User has DMs closed
+                if notify_channel:
+                    await notify_channel.send(f"💎 {user.mention}, you earned {points} gems!")
+        else:
+            # Notify in a channel
+            if notify_channel:
+                await notify_channel.send(message)
+            elif channel_id:
+                channel = bot.get_channel(channel_id)
+                if channel:
+                    await channel.send(message)
+
