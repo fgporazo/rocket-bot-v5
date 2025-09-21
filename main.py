@@ -69,7 +69,8 @@ async def load_extensions():
         "py.rocket_profile",
         "py.rocket_press_quest",
         "py.rocket_ship",
-        "py.rocket_lightning_round"
+        "py.rocket_lightning_round",
+        "py.rocket_shop"
     ]
     for ext in extensions:
         try:
