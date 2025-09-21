@@ -3,6 +3,7 @@ import random
 import json
 import os
 from discord.ext import commands
+from helpers import (award_points)
 
 # ----------- BUTTONS & VIEWS -----------
 class AnswerButton(discord.ui.Button):
@@ -181,7 +182,9 @@ class CompatibilityTest(commands.Cog):
             for i in range(len(questions))
         )
         percentage = (matches / len(questions)) * 100
-
+        # Award points to both players (pass actual Member objects!)
+        await award_points(self.bot, ctx.author, 15, notify_channel=ctx.channel)
+        await award_points(self.bot, member, 15, notify_channel=ctx.channel)
         # Pick GIF/comment dynamically from GIF JSON
         if percentage == 100:
             key = "success"
@@ -203,6 +206,7 @@ class CompatibilityTest(commands.Cog):
                         f"**Match Score:** `{percentage:.0f}%`\n{comment}",
             color=discord.Color.purple()
         )
+
         if gif_url:
             embed.set_image(url=gif_url)
 
