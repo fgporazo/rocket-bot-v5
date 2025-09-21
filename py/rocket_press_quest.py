@@ -5,6 +5,8 @@ import asyncio
 from collections import defaultdict
 import os
 import re
+from helpers import (award_points)
+
 
 def progress_bar(current, total, length=12):
     filled = int(length * current / total)
@@ -28,7 +30,7 @@ class PressQuest(commands.Cog):
         help_text = "\n".join(commands_list)
         await ctx.send(f"📖 **Team Rocket Press Quest (Quick Blast-Off Survey) Commands Guide**\n{help_text}")
 
-    @pq.command(name="start",help="start a to answer a quick blast-off survey")
+    @pq.command(name="start",help="start a quick blast-off Survey")
     async def pq_start(self, ctx):
         user_id = ctx.author.id
         now = asyncio.get_event_loop().time()
@@ -111,6 +113,8 @@ class PressQuest(commands.Cog):
             if answers:
                 for i, (q, a) in enumerate(answers, 1):
                     result.add_field(name=f"Q{i}: {q}", value=a, inline=False)
+                    await award_points(self.bot, ctx.author, 10,
+                                       notify_channel=ctx.channel)
             else:
                 result.description = "No answers recorded — you chickened out, twerp!"
             await ctx.send(embed=result)
