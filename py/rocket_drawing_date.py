@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from PIL import Image
 import aiohttp
 import io
+from helpers import (award_points)
 
 load_dotenv()
 SUBMISSION_CHANNEL_ID = int(os.getenv("DRAWING_SUBMISSION_CHANNEL", 0))
@@ -135,7 +136,7 @@ class DateView:
             return
 
         embed = discord.Embed(
-            title="💘 Team Rocket Special Drawing Date Result!",
+            title="💘 Team Rocket Drawing Date Result!",
             description=f"{self.author.mention} ❤️ {self.target.mention}\n"
                         f"✨ A masterpiece of love, drawn together on the Rocket canvas!",
             color=discord.Color.gold()
@@ -143,7 +144,8 @@ class DateView:
         embed.set_footer(text="🎨 Jessie & James proudly present your art date 💕")
 
         await self.ctx.send(embed=embed, file=merged_file)
-
+        await award_points(self.ctx.bot, self.author, 15, notify_channel=self.ctx.channel)
+        await award_points(self.ctx.bot, self.target, 15, notify_channel=self.ctx.channel)
 
 class RocketDrawingDate(commands.Cog):
     def __init__(self, bot):
