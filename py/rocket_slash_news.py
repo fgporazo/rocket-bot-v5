@@ -54,11 +54,11 @@ class RocketSlashNews(commands.Cog):
         ticker="Scrolling ticker text (separate by | ). Optional."
     )
     async def rocket_news(
-        self,
-        interaction: discord.Interaction,
-        headline: str,
-        details: str,
-        ticker: str = None
+            self,
+            interaction: discord.Interaction,
+            headline: str,
+            details: str,
+            ticker: str = None
     ):
         if not is_admin(interaction):
             await interaction.response.send_message(
@@ -66,12 +66,12 @@ class RocketSlashNews(commands.Cog):
             )
             return
 
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         full_ticker = DEFAULT_TICKER if not ticker else "   ".join([t.strip() for t in ticker.split("|")])
         embed = Embed(
-            title="🅰 🇳 🇳 🅾 🇺 🇳 🇨 🇪 🇲 🇪 🇳 🇹",
-            description=f"\n**{headline.upper()}**\n\n{details}\n\n📢 {full_ticker}",
+            title=f"{headline.upper()}",
+            description=f"{details}\n\n📢 {full_ticker}",
             color=Color.red()
         )
 
@@ -96,12 +96,35 @@ class RocketSlashNews(commands.Cog):
 
         view = BroadcastButtons()
 
-        try:
-            embed_msg = await interaction.followup.send(embed=embed, view=view, wait=True)
-        except discord.errors.InteractionResponded:
+        # ---------------- Send to announcement channel with @everyone ping ----------------
+        channel = self.bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+        if channel is None:
+            await interaction.followup.send("❌ Announcement channel not found.", ephemeral=True)
             return
 
-        # ✅ Auto-add reactions
+        try:
+            # Step 1: Ping everyone / roles
+            ping_msg = await channel.send(
+                "@everyone\n📢 🅰 🇳 🇳 🅾 🇺 🇳 🇨 🇪 🇲 🇪 🇳 🇹 📢",
+                allowed_mentions=discord.AllowedMentions(everyone=True)
+            )
+
+            embed_msg = await channel.send(
+                embed=embed,
+                view=view,
+                allowed_mentions=discord.AllowedMentions(everyone=True)
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ I don't have permission to mention everyone in the announcement channel.",
+                ephemeral=True
+            )
+            return
+
+        # Let admin know it was sent
+        await interaction.followup.send("✅ Announcement notified everyone!", ephemeral=True)
+
+        # ---------------- Auto-add reactions ----------------
         for emoji in ["👀", "🫶", "🔥", "⭐", "🙌"]:
             try:
                 await embed_msg.add_reaction(emoji)
@@ -118,7 +141,7 @@ class RocketSlashNews(commands.Cog):
                 while True:
                     for i in range(len(text)):
                         scroll = text[i:] + text[:i]
-                        embed.description = f"\n**{headline.upper()}**\n\n{details}\n\n📢 {scroll}"
+                        embed.description = f"{details}\n\n📢 {scroll}"
                         try:
                             await embed_msg.edit(embed=embed)
                         except discord.NotFound:
