@@ -3,12 +3,13 @@ from discord.ext import commands, tasks
 import asyncio
 import random
 from datetime import datetime, timedelta
+from helpers import (award_points)
 
 MAX_CAMPERS = 15
 MIN_CAMPERS = 2
 JOIN_COUNTDOWN = 60
 CONFESS_TIMEOUT = 60  # in seconds
-REACTION_COUNTDOWN = 30  # 30s to react
+REACTION_COUNTDOWN = 15  # 30s to react
 LIT_COOLDOWN_HOURS = 5
 TIMEOUT_DURATION = 60  # 1 minute freeze for kicked players after campfire
 
@@ -53,7 +54,7 @@ class RocketCampfire(commands.Cog):
         self.campfires[guild_id] = {
             "active": True,
             "joining_phase": True,
-            "campers": [],
+            "campers": [ctx.author.id],
             "kicked_campers": [],
             "confessions": [],
             "confession_thread": ctx.channel.id,
@@ -68,6 +69,7 @@ class RocketCampfire(commands.Cog):
             )
             embed.set_image(url="attachment://campfire.gif")
             await ctx.send(embed=embed, file=file)
+            await ctx.send(f"✅ {ctx.author.display_name} automatically joined the campfire! (1/{MAX_CAMPERS})")
         except:
             await ctx.send(f"🔥 {ctx.author.display_name} lit the campfire!\nJoin using `.cc join` \nMinimum Players: {MIN_CAMPERS}\nMaximum Players: {MAX_CAMPERS}\n⏳ {JOIN_COUNTDOWN}s left!")
 
@@ -124,6 +126,7 @@ class RocketCampfire(commands.Cog):
         record = self.campfires[guild_id]
         kicked = record["kicked_campers"]
         remaining_campers = [u for u in record["campers"] if u not in kicked]
+        survivors = []
 
         while remaining_campers:
             chosen_id = random.choice(remaining_campers)
@@ -205,20 +208,30 @@ class RocketCampfire(commands.Cog):
                 kicked.append(chosen_id)
                 await channel.send(f"❌ Camper got majority 👎 and will be frozen after campfire!")
             else:
+                survivors.append(chosen_id)
                 await channel.send(f"✅ Camper's confession passed!")
 
         # ----------------- Freeze all kicked players after campfire ends -----------------
+        await channel.send("🔥 Campfire ended! All kicked players are frozen ❄️ and will be rewarded 3 gems 💎.")
+        await channel.send("🎉 All surviving campers are rewarded with 5 gems 💎!")
+        for camper in survivors:
+            member = guild.get_member(camper)
+            await member.send(f"🎉 Congratulations camper! You survived the campfire confession and earned bonus gems! 💎")
+            await award_points(self.bot, member, 5, dm=True)
+
         for user_id in kicked:
             member = guild.get_member(user_id)
             if member:
+
                 until = discord.utils.utcnow() + timedelta(seconds=TIMEOUT_DURATION)
                 try:
                     await member.edit(timed_out_until=until, reason="Campfire ended - auto freeze")
                     await member.send(f"❄️ You were kicked during the campfire and are now frozen for {TIMEOUT_DURATION//60} minutes!")
+                    await member.send(f"You still earned bonus gems just for joining the campfire!")
+                    await award_points(self.bot, member, 3, dm=True)
                 except:
                     await channel.send(f"⚠️ Could not freeze {member.display_name}.")
 
-        await channel.send("🔥 Campfire ended! All kicked players are now frozen.")
         record["active"] = False
         record["finished"] = True
 
