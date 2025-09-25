@@ -5,7 +5,7 @@ from discord.ext import commands
 import random
 from datetime import datetime
 import re
-
+from helpers import (award_points)
 # ----------------------
 # Config / Environment
 # ----------------------
@@ -217,13 +217,28 @@ class SecretAdmirer(commands.Cog):
         else:
             embed.set_image(url=random.choice(GIFS))
 
+        # Public announcement in the confession channel
         await channel.send(embed=embed)
 
+        # DM confirmation
         await ctx.send(
             f"✅ Your confession has been sent anonymously to {channel.mention}!\n"
             f"💫 Check it out there!"
         )
 
+        # 🎁 Award gems to the sender
+        try:
+            reward_amount = 5
+            await ctx.author.send(
+                f"🎉 Congratulations, PokeCandidate! You’ve earned ** 💎 {reward_amount}  gems** "
+                f"for bravely sending a Secret Admirer confession 💖🚀"
+            )
+            await award_points(self.bot, ctx.author, reward_amount, dm=True)
+
+        except discord.Forbidden:
+            print(f"[WARN] Could not DM user {ctx.author.id} their gem reward.")
+
+        # End the session
         del sessions[ctx.author.id]
 
 # ----------------------
