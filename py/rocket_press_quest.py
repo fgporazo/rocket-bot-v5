@@ -113,11 +113,19 @@ class PressQuest(commands.Cog):
             if answers:
                 for i, (q, a) in enumerate(answers, 1):
                     result.add_field(name=f"Q{i}: {q}", value=a, inline=False)
-                    await award_points(self.bot, ctx.author, 10,
-                                       notify_channel=ctx.channel)
             else:
                 result.description = "No answers recorded — you chickened out, twerp!"
+
             await ctx.send(embed=result)
+
+            # 🎉 Bonus comes AFTER summary
+            if answers and all(a not in ["⏳ No Response"] for _, a in answers):
+                await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+                await ctx.send(
+                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 diamonds!**")
+            elif answers:
+                await ctx.send(f"⚠️ {ctx.author.mention}, you missed some questions — no bonus this time!")
+
             if user_id in self.active_sessions:
                 del self.active_sessions[user_id]
 
