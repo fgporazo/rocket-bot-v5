@@ -5,7 +5,7 @@ import asyncio, random, os, time
 from collections import defaultdict
 from datetime import timedelta
 from discord.utils import utcnow
-
+from helpers import (award_points)
 # ---------------- Config ----------------
 MIN_TEAM_SIZE = 1
 MAX_TEAM_SIZE = 10
@@ -288,6 +288,16 @@ class MontageChallenge(commands.Cog):
         )
         win_embed.set_image(url="https://i.pinimg.com/originals/34/95/89/3495896775dff68c4a683a7994b17135.gif")
         await ctx.send(embed=win_embed)
+
+        # ➕ Give rewards
+        for member in sess.teams[winner]:
+            await award_points(self.bot, member, 5, notify_channel=ctx.channel)
+        for member in sess.teams[loser]:
+            await award_points(self.bot, member, 3, notify_channel=ctx.channel)
+
+        await ctx.send(f"💎 Rewards distributed!\n"
+                       f"Team {winner}: **+5 gems each**\n"
+                       f"Team {loser}: **+3 gems each**")
 
         # Timeout losing team (skip admins)
         timeout_seconds = len(sess.flashed_images) * IMAGE_DURATION
