@@ -5,6 +5,7 @@ import asyncio
 import random
 import os
 import datetime
+from helpers import (award_points)
 
 class RocketEscapeRoom(commands.Cog):
     def __init__(self, bot):
@@ -13,7 +14,7 @@ class RocketEscapeRoom(commands.Cog):
         self.testing_mode = True  # Set True for single-player testing
         # Get channel ID from env variable
         self.escape_story_channel_id = int(os.getenv("ADMIN_ESCAPE_STORY_CHANNEL_ID", 0))
-        self.join_countdown = 60
+
     # ----------------- Commands -----------------
     @commands.group(name="er", invoke_without_command=True)
     async def er(self, ctx):
@@ -39,6 +40,7 @@ class RocketEscapeRoom(commands.Cog):
         story = random.choice(story["escape_stories"])
         min_p = story.get("min_players", 1)
         max_p = story.get("max_players", 15)
+        join_countdown = story.get("join_countdown", 10)
 
         # Initialize the room
         self.active_rooms[guild_id] = {
@@ -69,11 +71,11 @@ class RocketEscapeRoom(commands.Cog):
         await ctx.send(f"👥 Minimum Players: {min_p} | Maximum Players: {max_p}")
 
         wait_msg = await ctx.send(
-            f"Type `.er join` to join the escape mission! Waiting {self.join_countdown} seconds for players... ⏳"
+            f"Type `.er join` to join the escape mission! Waiting {join_countdown} seconds for players... ⏳"
         )
 
-        countdown = self.join_countdown
-        for i in range(countdown, 0, -1):
+
+        for i in range(join_countdown, 0, -1):
             await wait_msg.edit(
                 content=f"Type `.er join` to join the escape mission! Waiting {i} seconds for players... ⏳"
             )
@@ -193,10 +195,12 @@ class RocketEscapeRoom(commands.Cog):
                 for p in players:
                     if p and (not p.guild_permissions.administrator or self.testing_mode):
                         try:
+                            await award_points(self.bot, p, 3, notify_channel=ctx.channel)
                             await self.freeze_player(ctx, p, duration=300)  # 5 minutes
                         except:
                             pass
-                await ctx.send(f"Game ended. 💥 \n {', '.join(fail_mentions)} have been frozen for 5 minutes! ❄️ Team Rocket laughs maniacally!")
+                await ctx.send(f"Game ended. 💥 \n {', '.join(fail_mentions)} have been frozen for 5 minutes! ❄️ Team Rocket laughs maniacally!"
+                               f"\n💎 Players will be rewarded 3 gems for joining!")
                 if guild_id in self.active_rooms:
                     del self.active_rooms[guild_id]
                 return
@@ -206,13 +210,15 @@ class RocketEscapeRoom(commands.Cog):
                 try:
                     await p.remove_roles(trapped_role, reason="Escape mission success")
                     await p.add_roles(pokecandidate_role)
+                    await award_points(self.bot, p, 5, notify_channel=ctx.channel)
                 except:
                     pass
 
         member_mentions = [m.mention for m in players if m]
         await ctx.send(
             f"🌟 **VICTORY!** Excellent work, {', '.join(member_mentions)}, flawless escape! 🎉 "
-            "Team Rocket blasts off 🚀, and no one got frozen! ❄️✨"
+            f"Team Rocket blasts off 🚀, and no one got frozen! ❄️✨"
+            f"\n💎 Players will be rewarded 5 gems for winning!"
         )
         victory_img = story.get("victory_img")
         if victory_img:
