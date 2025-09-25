@@ -136,7 +136,7 @@ class DateView:
             return
 
         embed = discord.Embed(
-            title="💘 Team Rocket Drawing Date Result!",
+            title="💘 Team Rocket Special Drawing Date Result!",
             description=f"{self.author.mention} ❤️ {self.target.mention}\n"
                         f"✨ A masterpiece of love, drawn together on the Rocket canvas!",
             color=discord.Color.gold()
