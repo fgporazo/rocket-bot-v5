@@ -170,8 +170,8 @@ class MysteryDate(commands.Cog):
         if not admin_channel or not await self.load_settings_from_admin(admin_channel):
             return await ctx.send("❌ Settings not ready. Ask an admin.")
 
-        if ctx.channel.id != self.settings["MYSTERY_CHANNEL_ID"]:
-            return await ctx.send(f"❌ Use this command only in <#{self.settings['MYSTERY_CHANNEL_ID']}>.")
+        #if ctx.channel.id != self.settings["MYSTERY_CHANNEL_ID"]:
+           # return await ctx.send(f"❌ Use this command only in <#{self.settings['MYSTERY_CHANNEL_ID']}>.")
 
         if action != "start":
             return await ctx.send("❌ Wrong usage! Use `.md start` to begin.")
