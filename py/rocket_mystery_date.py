@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 from typing import Optional
 import os
-
+from helpers import (award_points)
 
 def has_any_role(member: discord.Member, role_names: set) -> bool:
     """Check if member has any of the specified roles."""
@@ -110,37 +110,51 @@ class MysteryDate(commands.Cog):
                     pass
 
     async def end_game(self, channel_1: discord.TextChannel, channel_2: discord.TextChannel, reason: str):
-        """End the game, reset state, and announce anonymously."""
-        try:
-            for ch in (channel_1, channel_2):
-                if not ch:
-                    continue
-                for m in [m for m in ch.members if not m.bot]:
-                    try:
-                        await ch.set_permissions(m, overwrite=None)
-                    except Exception:
-                        pass
+        """End the game, reset state, announce anonymously, and award points to players."""
+        players = []
+
+        # Collect members (exclude bots)
+        for ch in (channel_1, channel_2):
+            if not ch:
+                continue
+            members = [m for m in ch.members if not m.bot]
+            players.extend(members)
+            # Reset permissions
+            for m in members:
                 try:
-                    await ch.send(f"🚨 Game ended: {reason}")
+                    await ch.set_permissions(m, overwrite=None)
                 except Exception:
                     pass
-        finally:
-            for key, value in list(self.active_games.items()):
-                task = value.get("task")
-                if task and not task.done():
-                    task.cancel()
-                self.active_games.pop(key, None)
-            self.ongoing_dates = {}
+            # Announce game end in their channels
+            try:
+                await ch.send(f"🚨 Game ended: {reason}")
+            except Exception:
+                pass
 
-        # NEW: Announce in main Mystery Date channel (anonymous, no player names)
-        mystery_channel = channel_1.guild.get_channel(self.settings["MYSTERY_CHANNEL_ID"])
+        # Award points and DM each player
+        for player in players:
+            try:
+                await award_points(self.bot, player, 10, dm=True)  # dm=True sends DM
+            except Exception as e:
+                print(f"[DEBUG] Could not award points to {player}: {e}")
+
+        # Remove game from active
+        for key in list(self.active_games.keys()):
+            task = self.active_games[key].get("task")
+            if task and not task.done():
+                task.cancel()
+            self.active_games.pop(key, None)
+        self.ongoing_dates = {}
+
+        # Announce in main Mystery Date channel anonymously
+        mystery_channel = channel_1.guild.get_channel(self.settings.get("MYSTERY_CHANNEL_ID", 0))
         if mystery_channel:
             team_rocket_ends = [
                 f"🚨 A Mystery Date just ended: {reason}",
-                "✨ Jessie whispers: another secret romance fizzled out! I hope you had a wonderful Mystery Date — thanks for playing! ✨",
+                "✨ Jessie whispers: another secret romance fizzled out! Thanks for playing! ✨",
                 "😼 Meowth: That’s a wrap — Mystery Date closed! 💕 Hope you enjoyed your secret adventure!",
                 "🎭 James sighs: Another anonymous adventure ends! 🌟 Until the next Mystery Date… stay mysterious!",
-                "🌌 Wobbuffet: The curtain falls on this Mystery Date! I hope you had a wonderful Mystery Date — thanks for playing! ✨"
+                "🌌 Wobbuffet: The curtain falls on this Mystery Date! Hope you had fun! ✨"
             ]
             await mystery_channel.send(random.choice(team_rocket_ends))
 
@@ -296,6 +310,7 @@ class MysteryDate(commands.Cog):
                 self.bot.get_channel(self.settings["CHANNEL_2_ID"]),
                 reason=self.settings["TIMEOUT_REASON"]
             )
+
         except asyncio.CancelledError:
             return
 
