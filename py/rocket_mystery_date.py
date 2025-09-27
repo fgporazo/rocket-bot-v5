@@ -130,7 +130,7 @@ class MysteryDate(commands.Cog):
         for player in players:
             try:
                 # You can adjust the number of gems if you want
-                await award_points(self.bot, player, 10, dm=True)
+                await award_points(self.bot, player, 50, dm=True)
             except Exception as e:
                 print(f"[DEBUG] Could not award points to {player}: {e}")
 
