@@ -294,6 +294,10 @@ async def award_points(
         print("[DEBUG] No leaderboard channel provided.")
         return
 
+    # Determine the sign for messages
+    sign = "+" if points >= 0 else "-"
+    abs_points = abs(points)
+
     # Fetch leaderboard channel
     channel = bot.get_channel(channel_id) or await bot.fetch_channel(channel_id)
     if not channel:
@@ -308,7 +312,8 @@ async def award_points(
             # No leaderboard exists yet
             msg = await channel.send(f"{user.display_name} - {user.id} - {points}")
             if notify_channel:
-                await notify_channel.send(f"💎 {user.mention} earned **{points} points**!")
+                action = "earned" if points >= 0 else "lost"
+                await notify_channel.send(f"💎 {user.mention} {action} **{abs_points:,} gems**!")
             return
 
         lines = msg.content.splitlines()
@@ -343,21 +348,21 @@ async def award_points(
         # Edit the last leaderboard message
         await msg.edit(content="\n".join(new_lines))
 
-        message = f"💎 {user.display_name} earned {points} gems!"
+        # Notification message
+        action = "earned" if points >= 0 else "lost"
+        message = f"💎 {user.display_name} {action} {sign}{abs_points:,} gems!"
 
         if dm:
             try:
-                await user.send(message)  # Send DM
+                await user.send(message)
             except discord.Forbidden:
                 # User has DMs closed
                 if notify_channel:
-                    await notify_channel.send(f"💎 {user.mention}, you earned {points} gems!")
+                    await notify_channel.send(message)
         else:
-            # Notify in a channel
             if notify_channel:
                 await notify_channel.send(message)
             elif channel_id:
                 channel = bot.get_channel(channel_id)
                 if channel:
                     await channel.send(message)
-
