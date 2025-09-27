@@ -167,7 +167,7 @@ class RocketSabotage(commands.Cog):
     # ------------------------
     # Pokebag command
     # ------------------------
-    @commands.command(aliases=["pb"])
+    @commands.command(aliases=["pb"],help="Show your Pokebag inventory and gems, or check another member's Pokebag (Shiled Viewing is private).")
     async def pokebag(self, ctx: commands.Context, member: discord.Member = None):
         await self.load_inventory()
         await self.load_leaderboard()
@@ -210,7 +210,7 @@ class RocketSabotage(commands.Cog):
         help_text = "\n".join(commands_list)
         await ctx.send(f"📖 **Team Rocket - Poke Item (Sabotage Game) Commands Guide**\n{help_text}")
 
-    @pokeitem.command(name="binocular")
+    @pokeitem.command(name="binocular",aliases=["bino", "james"],help="Use on a player to view their Pokebag items and Wobbuffet shields.")
     async def pi_binocular(self, ctx, member: discord.Member = None):
         if member is None:
             await ctx.send("❌ You need to mention a player to use the binocular.", ephemeral=True)
@@ -236,7 +236,7 @@ class RocketSabotage(commands.Cog):
             view=view
         )
 
-    @pokeitem.command(name="potion", aliases=["love", "love_potion"])
+    @pokeitem.command(name="potion", aliases=["love", "love_potion","jessie"],help="Use to request a Team Rocket-assisted date setup.")
     async def pi_potion(self, ctx, member: discord.Member = None):
         if not await self.check_and_deduct(ctx, "💖", "Jessie's Love Potion"):
             return
@@ -249,7 +249,7 @@ class RocketSabotage(commands.Cog):
         )
 
 
-    @pokeitem.command(name="vacuum")
+    @pokeitem.command(name="vacuum",aliases=["vac", "meowth"], help="Use to steal 20% of another player's gems (fails if they have Wobbuffet Shield).")
     async def pi_vacuum(self, ctx, member: discord.Member = None):
         if member is None:
             await ctx.send("❌ You need to mention a player to use the vacuum.", ephemeral=True)
