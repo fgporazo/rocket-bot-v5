@@ -228,7 +228,7 @@ class SecretAdmirer(commands.Cog):
 
         # 🎁 Award gems to the sender
         try:
-            reward_amount = 5
+            reward_amount = 30
             await ctx.author.send(
                 f"🎉 Congratulations, PokeCandidate! You’ve earned ** 💎 {reward_amount}  gems** "
                 f"for bravely sending a Secret Admirer confession 💖🚀"
