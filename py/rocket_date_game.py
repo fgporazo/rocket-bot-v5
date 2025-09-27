@@ -157,7 +157,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="🚀 Love is a battlefield, choose wisely.")
         await safe_send(ctx, embed=embed)
         # Award +1 point for using this command
-        await award_points(self.bot, ctx.author, 5,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 50,notify_channel=ctx.channel)
     # -------------------- ACCEPT --------------------
     @tr.command(name="dateyes", description="Accept an e-date request from other PokeCandidates 💖")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -186,7 +186,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="💘 Team Rocket spreads love and chaos!")
         await safe_send(ctx, embed=embed)
 
-        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
 
     # -------------------- REJECT --------------------
     @tr.command(name="dateno", description="Reject an e-date request from a user 💔 (optionally add a reason)")
@@ -218,7 +218,7 @@ class RocketDate(commands.Cog):
         )
         embed.set_footer(text="😼 Don’t break too many hearts, Rocket!")
         await safe_send(ctx, embed=embed)
-        await award_points(self.bot, ctx.author, 3, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
     # -------------------- HISTORY --------------------
     @tr.command(name="history", description="💌 Show e-date history")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -449,7 +449,7 @@ class RocketDate(commands.Cog):
         for line in fountain_lines:
             await ctx.send(line)
         await ctx.send(end_msg)
-        await award_points(self.bot, ctx.author, 1,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 2,notify_channel=ctx.channel)
     # -------------------- FEEDBACK --------------------
     @tr.command(name="feedback", description="Type **.tr feedback <message>**. DM the bot to use this feature 📩")
     @commands.dm_only()
