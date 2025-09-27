@@ -122,7 +122,7 @@ class PressQuest(commands.Cog):
             if answers and all(a not in ["⏳ No Response"] for _, a in answers):
                 await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
                 await ctx.send(
-                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 diamonds!**")
+                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 gems!**")
             elif answers:
                 await ctx.send(f"⚠️ {ctx.author.mention}, you missed some questions — no bonus this time!")
 
