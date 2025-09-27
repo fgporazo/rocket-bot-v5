@@ -5,14 +5,17 @@ import discord
 from discord.ext import commands
 from typing import Optional
 import os
-from helpers import (award_points)
+from helpers import award_points
+
 
 def has_any_role(member: discord.Member, role_names: set) -> bool:
     """Check if member has any of the specified roles."""
     return any(role.name in role_names for role in member.roles)
 
+
 class StartButton(discord.ui.View):
     """Button for Player 1 to start the Mystery Date conversation."""
+
     def __init__(self, other_channel: discord.TextChannel):
         super().__init__(timeout=None)
         self.other_channel = other_channel
@@ -20,16 +23,9 @@ class StartButton(discord.ui.View):
     @discord.ui.button(label="Start", style=discord.ButtonStyle.success, emoji="💌")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            # Send "hi" into the other player's channel
             await self.other_channel.send("hi")
-
-            # Notify Player 2 that the game has started
             await self.other_channel.send("💕 Your mystery date has started! Player 1 just said hi!")
-
-            # Ephemeral confirmation for Player 1
             await interaction.response.send_message("✅ You started the game with a 'hi'!", ephemeral=True)
-
-            # Disable further clicks
             self.stop()
         except Exception as e:
             await interaction.response.send_message(f"❌ Couldn't send start message: {e}", ephemeral=True)
@@ -110,10 +106,10 @@ class MysteryDate(commands.Cog):
                     pass
 
     async def end_game(self, channel_1: discord.TextChannel, channel_2: discord.TextChannel, reason: str):
-        """End the game, reset state, announce anonymously, and award points to players."""
+        """End the game, reset state, announce anonymously, and award gems to both players."""
+        # Identify Player 1 and Player 2 explicitly
         players = []
 
-        # Collect members (exclude bots)
         for ch in (channel_1, channel_2):
             if not ch:
                 continue
@@ -125,20 +121,20 @@ class MysteryDate(commands.Cog):
                     await ch.set_permissions(m, overwrite=None)
                 except Exception:
                     pass
-            # Announce game end in their channels
             try:
                 await ch.send(f"🚨 Game ended: {reason}")
             except Exception:
                 pass
 
-        # Award points and DM each player
+        # Award gems to both players
         for player in players:
             try:
-                await award_points(self.bot, player, 10, dm=True)  # dm=True sends DM
+                # You can adjust the number of gems if you want
+                await award_points(self.bot, player, 10, dm=True)
             except Exception as e:
                 print(f"[DEBUG] Could not award points to {player}: {e}")
 
-        # Remove game from active
+        # Clean up active games
         for key in list(self.active_games.keys()):
             task = self.active_games[key].get("task")
             if task and not task.done():
@@ -146,17 +142,18 @@ class MysteryDate(commands.Cog):
             self.active_games.pop(key, None)
         self.ongoing_dates = {}
 
-        # Announce in main Mystery Date channel anonymously
-        mystery_channel = channel_1.guild.get_channel(self.settings.get("MYSTERY_CHANNEL_ID", 0))
+        # Announce anonymously in Mystery Channel (optional flavor)
+        guild = channel_1.guild
+        mystery_channel = guild.get_channel(self.settings.get("MYSTERY_CHANNEL_ID", 0))
         if mystery_channel:
-            team_rocket_ends = [
+            messages = [
                 f"🚨 A Mystery Date just ended: {reason}",
                 "✨ Jessie whispers: another secret romance fizzled out! Thanks for playing! ✨",
                 "😼 Meowth: That’s a wrap — Mystery Date closed! 💕 Hope you enjoyed your secret adventure!",
                 "🎭 James sighs: Another anonymous adventure ends! 🌟 Until the next Mystery Date… stay mysterious!",
                 "🌌 Wobbuffet: The curtain falls on this Mystery Date! Hope you had fun! ✨"
             ]
-            await mystery_channel.send(random.choice(team_rocket_ends))
+            await mystery_channel.send(random.choice(messages))
 
     # ---------------- Commands ----------------
     @commands.command(name="md")
@@ -167,11 +164,21 @@ class MysteryDate(commands.Cog):
 
         admin_channel_id = int(os.getenv("ADMIN_MYSTERY_CHANNEL_ID", 0))
         admin_channel = guild.get_channel(admin_channel_id)
+        mystery_channel_id = int(os.getenv("MYSTERY_CHANNEL_ID", 0))
         if not admin_channel or not await self.load_settings_from_admin(admin_channel):
             return await ctx.send("❌ Settings not ready. Ask an admin.")
 
-        #if ctx.channel.id != self.settings["MYSTERY_CHANNEL_ID"]:
-           # return await ctx.send(f"❌ Use this command only in <#{self.settings['MYSTERY_CHANNEL_ID']}>.")
+        rocket_bot_channel_id = self.settings.get("ROCKET_BOT_CHANNEL_ID", 0)
+        rocket_bot_channel = guild.get_channel(rocket_bot_channel_id)
+        if ctx.channel.id != mystery_channel_id:
+            try:
+                await ctx.author.send(
+                    f"❌ You can only start a Mystery Date in {rocket_bot_channel.mention}."
+                )
+            except:
+                # fallback if DM fails
+                await ctx.send(f"❌ You must use this command in {rocket_bot_channel.mention}.", delete_after=10)
+            return
 
         if action != "start":
             return await ctx.send("❌ Wrong usage! Use `.md start` to begin.")
@@ -193,6 +200,7 @@ class MysteryDate(commands.Cog):
         await self.clear_channel_access(ch1)
         await self.clear_channel_access(ch2)
 
+        # Assign player to a free channel
         if self.channel_member_count(ch1) < self.settings["ALLOWED_USERS"]:
             target_channel = ch1
             player_label = self.settings["PLAYER_LABELS"][0]
@@ -214,18 +222,14 @@ class MysteryDate(commands.Cog):
         except Exception:
             await ctx.send(f"💥 {ctx.author.mention}, you were added to **{player_label}**.")
 
-        # Public flavor message
+        # Flavor messages mentioning Rocket Bot channel
+        rocket_mention = rocket_bot_channel.mention if rocket_bot_channel else ctx.channel.mention
         await ctx.send(random.choice([
-            "🚀 Jessie and James spotted a new recruit in Mystery Date…check your DMs 👀",
-            "💥 A mysterious figure entered Mystery Date… Team Rocket is watching! Check your DMs 👀"
-        ]))
-
-        await ctx.send(random.choice([
-            f"🎭 **Player 1** is lurking in the Mystery Room…\n@everyone dare to click **Mystery Date** in {ctx.channel.mention} and claim the spot of Player 2?",
-            f"💘 Player 1 waits in the shadows…\n@everyone who’s brave enough to smash **Mystery Date** in {ctx.channel.mention} and become Player 2?",
-            f"🔥 The arena crackles with tension! Player 1 is ready…\n@everyone click **Mystery Date** in {ctx.channel.mention} to step in as Player 2!",
-            f"😼 Meowth whispers: ‘Player 1 is getting lonely…’\n@everyone time to hit **Mystery Date** in {ctx.channel.mention} and spice things up as Player 2!",
-            f"🚀 Jessie shouts: ‘One seat taken, one seat left!’\n@everyone tap **Mystery Date** in {ctx.channel.mention} to jump in as Player 2!"
+            f"🎭 **Player 1** is lurking in the Mystery Room…\n@everyone dare to click **Mystery Date** in {rocket_mention} and claim the spot of Player 2?",
+            f"💘 Player 1 waits in the shadows…\n@everyone who’s brave enough to smash **Mystery Date** in {rocket_mention} and become Player 2?",
+            f"🔥 The arena crackles with tension! Player 1 is ready…\n@everyone click **Mystery Date** in {rocket_mention} to step in as Player 2!",
+            f"😼 Meowth whispers: ‘Player 1 is getting lonely…’\n@everyone time to hit **Mystery Date** in {rocket_mention} and spice things up as Player 2!",
+            f"🚀 Jessie shouts: ‘One seat taken, one seat left!’\n@everyone tap **Mystery Date** in {rocket_mention} to jump in as Player 2!"
         ]))
 
         welcome = (
@@ -235,63 +239,90 @@ class MysteryDate(commands.Cog):
             f"⏱ If {other_label} doesn't reply in {self.settings['REPLY_MINUTE']} minute(s), the game ends."
         )
 
-        # Figure out where "hi" should go
         other_channel = ch2 if target_channel.id == ch1.id else ch1
-
         view = StartButton(other_channel)
         sent = await target_channel.send(welcome, view=view)
 
         if player_label == self.settings["PLAYER_LABELS"][0]:
-            task = asyncio.create_task(self.live_countdown(sent, self.settings["REPLY_MINUTE"], other_label, guild.id))
+            task = asyncio.create_task(
+                self.live_countdown(sent, self.settings["REPLY_MINUTE"], other_label, guild.id)
+            )
             self.active_games[target_channel.id] = {"task": task, "last_message": sent}
+
 
     # ---------------- Listeners ----------------
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not self.settings_loaded:
             return
-        if message.channel.id == self.settings.get("MYSTERY_CHANNEL_ID"):
+        if message.channel.id not in {self.settings["CHANNEL_1_ID"], self.settings["CHANNEL_2_ID"]}:
             return
 
+        # Determine target channel & labels
         if message.channel.id == self.settings["CHANNEL_1_ID"]:
             target_channel = self.bot.get_channel(self.settings["CHANNEL_2_ID"])
             masked_name = self.settings["PLAYER_LABELS"][0]
             target_name = self.settings["PLAYER_LABELS"][1]
-        elif message.channel.id == self.settings["CHANNEL_2_ID"]:
+        else:
             target_channel = self.bot.get_channel(self.settings["CHANNEL_1_ID"])
             masked_name = self.settings["PLAYER_LABELS"][1]
             target_name = self.settings["PLAYER_LABELS"][0]
-        else:
-            return
+
         if not target_channel:
             return
 
+        # Delete the original message to keep things anonymous
         try:
             await message.delete()
         except Exception:
             pass
 
-        await message.channel.send(
-            self.settings["SEND_CONFIRMATION_TEMPLATE"].format(
-                target_name=target_name, content=message.content
-            )
+        # Send confirmation to the player (only once)
+        confirmation_text = self.settings["SEND_CONFIRMATION_TEMPLATE"].format(
+            target_name=target_name, content=message.content
         )
+        await message.channel.send(confirmation_text, delete_after=5)  # auto-delete after 5s
 
+        # Relay to the other player
         embed = discord.Embed(description=message.content, color=discord.Color.green())
         embed.set_author(name=masked_name)
         minutes, seconds = divmod(self.settings["REPLY_MINUTE"] * 60, 60)
         embed.set_footer(text=self.settings["FOOTER_TEMPLATE"].format(
             tip=self.settings["TIP_TEXT"], minutes=minutes, seconds=seconds
         ))
-        sent = await target_channel.send(embed=embed)
+        sent_embed = await target_channel.send(embed=embed)
 
+        # Cancel previous countdown if exists
         prev = self.active_games.get(message.channel.id)
-        if prev:
-            if prev.get("task") and not prev["task"].done():
-                prev["task"].cancel()
+        if prev and prev.get("task") and not prev["task"].done():
+            prev["task"].cancel()
 
-        task = asyncio.create_task(self.turn_countdown(message.channel, sent))
-        self.active_games[message.channel.id] = {"task": task, "last_message": sent}
+        # Start a new countdown task for this turn
+        task = asyncio.create_task(self.turn_countdown(message.channel, sent_embed))
+        self.active_games[message.channel.id] = {"task": task, "last_message": sent_embed}
+
+    async def turn_countdown(self, channel: discord.TextChannel, sent: discord.Message):
+        total_seconds = self.settings["REPLY_MINUTE"] * 60
+        try:
+            while total_seconds > 0:
+                m, s = divmod(total_seconds, 60)
+                if sent.embeds:
+                    embed = sent.embeds[0]
+                    embed.set_footer(text=self.settings["FOOTER_TEMPLATE"].format(
+                        tip=self.settings["TIP_TEXT"], minutes=m, seconds=s
+                    ))
+                    await sent.edit(embed=embed)
+                await asyncio.sleep(1)
+                total_seconds -= 1
+
+            # Time's up – end the game
+            await self.end_game(
+                self.bot.get_channel(self.settings["CHANNEL_1_ID"]),
+                self.bot.get_channel(self.settings["CHANNEL_2_ID"]),
+                reason=self.settings["TIMEOUT_REASON"]
+            )
+        except asyncio.CancelledError:
+            return
 
     async def turn_countdown(self, channel: discord.TextChannel, sent: discord.Message):
         total_seconds = self.settings["REPLY_MINUTE"] * 60
