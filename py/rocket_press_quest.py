@@ -5,7 +5,7 @@ import asyncio
 from collections import defaultdict
 import os
 import re
-from helpers import (award_points)
+from helpers import (award_points,update_daily_quest)
 
 
 def progress_bar(current, total, length=12):
@@ -121,8 +121,9 @@ class PressQuest(commands.Cog):
             # 🎉 Bonus comes AFTER summary
             if answers and all(a not in ["⏳ No Response"] for _, a in answers):
                 await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+                await update_daily_quest(self.bot, ctx.author, "d")
                 await ctx.send(
-                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 gems!**")
+                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 diamonds!**")
             elif answers:
                 await ctx.send(f"⚠️ {ctx.author.mention}, you missed some questions — no bonus this time!")
 
