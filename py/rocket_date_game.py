@@ -133,14 +133,14 @@ class RocketDate(commands.Cog):
 
         # Check if all quests are done
         all_done = all(re.search(rf"{qid}1", quest_status_raw) for qid in DAILY_QUEST_IDS)
-
+        award_gems = 50
         # Footer logic
         if reward_claimed == "YES":
             footer_text = "\n💎 You already claimed your reward. Come back tomorrow!"
         elif all_done:
-            footer_text = "\n💎 Complete all quests to earn 500 gems! Resets tomorrow."
+            footer_text = "f\n💎 Complete all quests to earn {award_gems} gems! Resets tomorrow."
         else:
-            footer_text = "\n💎 Complete all quests to earn 500 gems! Resets tomorrow."
+            footer_text = "f\n💎 Complete all quests to earn {award_gems} gems! Resets tomorrow."
 
         # Create embed
         embed = discord.Embed(
@@ -151,9 +151,9 @@ class RocketDate(commands.Cog):
 
         await ctx.send(embed=embed)
 
-        # Award 500 gems automatically if all done and not claimed
+        # Award gems automatically if all done and not claimed
         if all_done and reward_claimed != "YES":
-            await award_points(self.bot, ctx.author, 500, notify_channel=ctx.channel)
+            await award_points(self.bot, ctx.author, award_gems, notify_channel=ctx.channel)
             # Update user line to mark reward claimed
             lines[user_line_index] = f"{parts[0]} | {quest_status_raw} | YES"
             await latest_msg.edit(content="\n".join(lines))
