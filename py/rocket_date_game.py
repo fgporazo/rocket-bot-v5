@@ -138,9 +138,9 @@ class RocketDate(commands.Cog):
         if reward_claimed == "YES":
             footer_text = "\n💎 You already claimed your reward. Come back tomorrow!"
         elif all_done:
-            footer_text = "f\n💎 Complete all quests to earn {award_gems} gems! Resets tomorrow."
+            footer_text = f"\n💎 Complete all quests to earn {award_gems} gems! Resets tomorrow.\n⚡ Commands: `.tr thunderbolt` `.tr roast` `.tr drama` `.pq start`"
         else:
-            footer_text = "f\n💎 Complete all quests to earn {award_gems} gems! Resets tomorrow."
+            footer_text = f"\n💎 Complete all quests to earn {award_gems} gems! Resets tomorrow.\n⚡ Commands: `.tr thunderbolt` `.tr roast` `.tr drama` `.pq start`"
 
         # Create embed
         embed = discord.Embed(
@@ -646,4 +646,3 @@ async def setup(bot):
     # now you can safely access it
     if "feedback" in cog.tr.all_commands:
         cog.tr.all_commands["feedback"].checks = []
-
