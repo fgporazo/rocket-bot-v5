@@ -13,7 +13,8 @@ from helpers import (
     init_db, is_admin, is_edate_gamer, get_gender_emoji, get_guild_contestants,
     safe_send, TextPaginator, EmbedPaginator,
     count_sent_today, insert_record, get_pending_between, update_status,
-    fetch_incoming_history, load_json_file,award_points
+    fetch_incoming_history, load_json_file,award_points,
+    update_daily_quest, DAILY_QUEST_IDS, DAILY_QUEST_CHANNEL_ID
 )
 
 # Optional constants
@@ -73,6 +74,90 @@ class RocketDate(commands.Cog):
             return
         raise error  # re-raise other errors so they're not swallowed
 
+    @tr.command(name="quest", aliases=["q", "daily"], description="Check your daily quest progress")
+    async def tr_quest(self, ctx):
+        """Show daily quest progress as a single embed with checkboxes and reward claim status."""
+        channel = self.bot.get_channel(DAILY_QUEST_CHANNEL_ID)
+        if not channel:
+            return await safe_send(ctx, "⚠️ Daily Quest channel not found!")
+
+        today_str = str(date.today())
+        latest_msg: discord.Message | None = None
+
+        # Look for today's message
+        async for msg in channel.history(limit=50):
+            if msg.content.startswith(f"Daily Quest — {today_str}"):
+                latest_msg = msg
+                break
+
+        # Create today's message if missing
+        if not latest_msg:
+            latest_msg = await channel.send(f"Daily Quest — {today_str}")
+
+        lines = latest_msg.content.splitlines()
+        user_id_str = str(ctx.author.id)
+        user_line_index: int | None = None
+
+        # Check if user line exists
+        for i, line in enumerate(lines[1:], start=1):
+            if user_id_str in line:
+                user_line_index = i
+                break
+
+        # If missing, create user line with all zeros and NO claim
+        if user_line_index is None:
+            quest_status = " | ".join(f"{qid}0" for qid in DAILY_QUEST_IDS)
+            lines.append(f"{ctx.author.display_name} — {user_id_str} | {quest_status} | NO")
+            user_line_index = len(lines) - 1
+            await latest_msg.edit(content="\n".join(lines))
+
+        # Get full quest status string
+        user_line = lines[user_line_index]
+        parts = [p.strip() for p in user_line.split("|")]
+        quest_status_raw = " | ".join(parts[1:1 + len(DAILY_QUEST_IDS)])  # a-d statuses
+        reward_claimed = parts[-1] if len(parts) > len(DAILY_QUEST_IDS) + 1 else "NO"
+
+        # Map quest IDs to emojis & descriptions
+        quest_map = {
+            "a": "⚡ Thunderbolt someone",
+            "b": "🔥 Roast someone",
+            "c": "🎭 Drama someone",
+            "d": "📰 Press quest"
+        }
+
+        # Build the description with checkboxes
+        description_lines = []
+        for qid in DAILY_QUEST_IDS:
+            status = "✅" if re.search(rf"{qid}1", quest_status_raw) else "⬛"
+            description_lines.append(f"{status}  {quest_map[qid]}")
+
+        # Check if all quests are done
+        all_done = all(re.search(rf"{qid}1", quest_status_raw) for qid in DAILY_QUEST_IDS)
+
+        # Footer logic
+        if reward_claimed == "YES":
+            footer_text = "\n💎 You already claimed your reward. Come back tomorrow!"
+        elif all_done:
+            footer_text = "\n💎 Complete all quests to earn 500 gems! Resets tomorrow."
+        else:
+            footer_text = "\n💎 Complete all quests to earn 500 gems! Resets tomorrow."
+
+        # Create embed
+        embed = discord.Embed(
+            title=f"{ctx.author.display_name}'s Daily Quests — {today_str}",
+            description="\n".join(description_lines) + f"\n{footer_text}",
+            color=0xFF99FF
+        )
+
+        await ctx.send(embed=embed)
+
+        # Award 500 gems automatically if all done and not claimed
+        if all_done and reward_claimed != "YES":
+            await award_points(self.bot, ctx.author, 500, notify_channel=ctx.channel)
+            # Update user line to mark reward claimed
+            lines[user_line_index] = f"{parts[0]} | {quest_status_raw} | YES"
+            await latest_msg.edit(content="\n".join(lines))
+
     # ────────── TR LIST ──────────
     @tr.command(name="list", description="See all PokeCandidates 🚀")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -107,10 +192,10 @@ class RocketDate(commands.Cog):
                 description="\n".join(lines[i:i + page_size]),
                 color=0xFF99FF
             )
-            embed.set_footer(text="✨ Who will rise to the top of Team Rocket E-Date?")
+            embed.set_footer(text="✨ Who will rise to the top of Team Rocket E-Games?")
             embeds.append(embed)
 
-        paginator = EmbedPaginator(embeds)
+        paginator = EmbedPaginator(embeds, ctx.author)
         await paginator.start(ctx)
 
     # -------------------- DATE REQUEST --------------------
@@ -157,7 +242,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="🚀 Love is a battlefield, choose wisely.")
         await safe_send(ctx, embed=embed)
         # Award +1 point for using this command
-        await award_points(self.bot, ctx.author, 50,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5,notify_channel=ctx.channel)
     # -------------------- ACCEPT --------------------
     @tr.command(name="dateyes", description="Accept an e-date request from other PokeCandidates 💖")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -186,7 +271,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="💘 Team Rocket spreads love and chaos!")
         await safe_send(ctx, embed=embed)
 
-        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
 
     # -------------------- REJECT --------------------
     @tr.command(name="dateno", description="Reject an e-date request from a user 💔 (optionally add a reason)")
@@ -218,7 +303,7 @@ class RocketDate(commands.Cog):
         )
         embed.set_footer(text="😼 Don’t break too many hearts, Rocket!")
         await safe_send(ctx, embed=embed)
-        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 3, notify_channel=ctx.channel)
     # -------------------- HISTORY --------------------
     @tr.command(name="history", description="💌 Show e-date history")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -265,15 +350,11 @@ class RocketDate(commands.Cog):
             embed.set_footer(text="💌 Memories recorded in Rocket archives.")
             embeds.append(embed)
 
-        paginator = EmbedPaginator(embeds)
+        paginator = EmbedPaginator(embeds, ctx.author)
         await paginator.start(ctx)
 
     # -------------------- LEADERBOARD --------------------
-    @tr.command(
-        name="leaderboard",
-        aliases=["lb", "top"],
-        description="Show the top Rocket Points 🚀"
-    )
+    @tr.command(name="leaderboard", aliases=["lb", "top"], description="See the Team Rocket E-Games Leaderboard 🚀")
     async def tr_leaderboard(self, ctx):
         channel = self.bot.get_channel(LEADERBOARD_CHANNEL_ID)
         if not channel:
@@ -301,16 +382,30 @@ class RocketDate(commands.Cog):
         # Sort descending by points
         leaderboard.sort(key=lambda x: x[2], reverse=True)
 
-        embed = discord.Embed(title="🚀 Team Rocket E-Games Leaderboard", color=0xFF99FF)
-        description_lines = []
-        for idx, (name, uid, points) in enumerate(leaderboard[:10], start=1):
-            medal = MEDALS[idx - 1] if idx <= len(MEDALS) else ""
-            description_lines.append(f"{medal} {name} — {points:,}  💎")  # <-- add commas here
+        # Split into pages
+        page_size = 10
+        embeds = []
+        for i in range(0, len(leaderboard), page_size):
+            embed = discord.Embed(
+                title="🚀 Team Rocket E-Games Leaderboard",
+                color=0xFF99FF
+            )
+            description_lines = []
+            for idx, (name, uid, points) in enumerate(leaderboard[i:i + page_size], start=i + 1):
+                medal = MEDALS[idx - 1] if idx <= len(MEDALS) else ""
+                description_lines.append(f"{medal} {name} — {points:,} 💎")
 
-        embed.description = "\n".join(description_lines)
-        embed.set_footer(text="✨ Be the #1 E-gamer in Events & Rocketverse!")
-        await safe_send(ctx, embed=embed)
+            embed.description = "\n".join(description_lines)
+            embed.set_footer(
+                text=f"✨ Be the #1 E-gamer in Events & Rocketverse!"
+            )
+            embeds.append(embed)
 
+        if not embeds:
+            return await safe_send(ctx, "⚠️ Leaderboard is empty.")
+
+        paginator = EmbedPaginator(embeds, ctx.author)
+        await paginator.start(ctx)
     # -------------------- GEMS --------------------
     @tr.command(
         name="gems",
@@ -364,6 +459,7 @@ class RocketDate(commands.Cog):
             random.shuffle(self.roast_queue)
         template = self.roast_queue.pop()
         await ctx.send(template.format(author=ctx.author.mention, target=member.mention))
+        await update_daily_quest(self.bot, ctx.author, "b")
         await award_points(self.bot, ctx.author, 1,notify_channel=ctx.channel)
 
     @tr.command(name="scream", description="Scream to your enemy 📢")
@@ -396,6 +492,7 @@ class RocketDate(commands.Cog):
         self.last_drama_template = chosen
         self.drama_queue.remove(chosen)
         await ctx.send(chosen.format(author=ctx.author.mention, target=member.mention))
+        await update_daily_quest(self.bot, ctx.author, "c")
         await award_points(self.bot, ctx.author, 1,notify_channel=ctx.channel)
 
     @tr.command(name="thunderbolt", description="Zap someone ⚡")
@@ -413,6 +510,7 @@ class RocketDate(commands.Cog):
             random.shuffle(self.thunderbolt_queue)
         template = self.thunderbolt_queue.pop()
         await ctx.send(template.format(author=ctx.author.mention, target=member.mention))
+        await update_daily_quest(self.bot, ctx.author, "a")
         await award_points(self.bot, ctx.author, 1,notify_channel=ctx.channel)
 
     # -------------------- SHOUTING SPRING --------------------
@@ -449,7 +547,7 @@ class RocketDate(commands.Cog):
         for line in fountain_lines:
             await ctx.send(line)
         await ctx.send(end_msg)
-        await award_points(self.bot, ctx.author, 2,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 1,notify_channel=ctx.channel)
     # -------------------- FEEDBACK --------------------
     @tr.command(name="feedback", description="Type **.tr feedback <message>**. DM the bot to use this feature 📩")
     @commands.dm_only()
