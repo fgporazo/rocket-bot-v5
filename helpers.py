@@ -5,7 +5,8 @@ import os
 import asyncio
 import json
 import sqlite3
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, date
 from typing import List, Optional, Union, Any, Dict, Tuple
 
 import discord
@@ -237,14 +238,53 @@ class TextPaginator(discord.ui.View):
             await interaction.response.edit_message(embed=self.parent.embed, view=self.parent)
 
 class EmbedPaginator(discord.ui.View):
-    """Paginator for embed pages."""
-    def __init__(self, embeds: List[discord.Embed]):
-        super().__init__(timeout=60)
+    """Embed paginator that works with both prefix and slash commands."""
+
+    def __init__(self, embeds: List[discord.Embed], author: discord.User, timeout: int = 120):
+        super().__init__(timeout=timeout)
         self.embeds = embeds
         self.index = 0
+        self.message: discord.Message = None
+        self.author = author  # only allow the command caller
 
-    async def start(self, ctx_or_interaction):
-        await safe_send(ctx_or_interaction, embed=self.embeds[self.index], view=self)
+        # total pages for footer
+        self.total_pages = len(embeds)
+
+        # add page numbers to all embeds
+        for idx, embed in enumerate(self.embeds, start=1):
+            if embed.footer and embed.footer.text:
+                embed.set_footer(text=f"{embed.footer.text} | Page {idx}/{self.total_pages}")
+            else:
+                embed.set_footer(text=f"Page {idx}/{self.total_pages}")
+
+    async def start(self, ctx_or_interaction: Union[commands.Context, discord.Interaction]):
+        """Send the first embed and attach the paginator."""
+        first_embed = self.embeds[self.index]
+
+        if isinstance(ctx_or_interaction, commands.Context):  # Prefix command
+            self.message = await ctx_or_interaction.send(embed=first_embed, view=self)
+
+        elif isinstance(ctx_or_interaction, discord.Interaction):  # Slash command
+            if ctx_or_interaction.response.is_done():
+                self.message = await ctx_or_interaction.followup.send(embed=first_embed, view=self)
+            else:
+                await ctx_or_interaction.response.send_message(embed=first_embed, view=self)
+                self.message = await ctx_or_interaction.original_response()
+
+        else:  # fallback (DMs, etc.)
+            try:
+                self.message = await ctx_or_interaction.send(embed=first_embed, view=self)
+            except Exception:
+                pass
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Only allow the original author to press buttons."""
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message(
+                "⛔ Only the command author can use these buttons!", ephemeral=True
+            )
+            return False
+        return True
 
     @discord.ui.button(label="◀️ Prev", style=discord.ButtonStyle.primary)
     async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -256,7 +296,15 @@ class EmbedPaginator(discord.ui.View):
         self.index = (self.index + 1) % len(self.embeds)
         await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
 
-
+    async def on_timeout(self):
+        """Disable buttons when paginator times out."""
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
 # ─── ADMIN & JSON Utils ────────────────────────────
 ADMIN_IDS = set(int(uid.strip()) for uid in os.getenv("ADMIN_IDS", "").split(",") if uid.strip())
 
@@ -366,3 +414,39 @@ async def award_points(
                 channel = bot.get_channel(channel_id)
                 if channel:
                     await channel.send(message)
+
+
+# ---------------- DAILY QUEST ----------------
+# Admin channel ID for daily quests
+DAILY_QUEST_CHANNEL_ID = int(os.getenv("DAILY_QUEST_CHANNEL_ID", 0))
+
+# All daily quest IDs in order
+DAILY_QUEST_IDS = ["a", "b", "c", "d"]
+async def update_daily_quest(bot: commands.Bot, member: discord.Member, quest_id: str):
+    channel = bot.get_channel(DAILY_QUEST_CHANNEL_ID)
+    if not channel:
+        return  # channel not found
+
+    # Get the last message in the channel
+    last_message = None
+    async for msg in channel.history(limit=1):
+        last_message = msg
+        break
+
+    if not last_message:
+        return  # no messages, nothing to do
+
+    lines = last_message.content.splitlines()
+    updated_lines = []
+
+    for line in lines:
+        if str(member.id) in line:
+            # Update quest_id from 0 → 1
+            updated_line = line.replace(f"{quest_id}0", f"{quest_id}1")
+            updated_lines.append(updated_line)
+        else:
+            updated_lines.append(line)
+
+    # Only edit if a change was made
+    if lines != updated_lines:
+        await last_message.edit(content="\n".join(updated_lines))
