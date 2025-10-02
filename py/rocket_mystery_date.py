@@ -72,7 +72,6 @@ class MysteryDate(commands.Cog):
                 "ALLOWED_USERS": int(parsed.get("ALLOWED_USERS", 1)),
                 "REPLY_MINUTE": int(parsed.get("REPLY_MINUTE", 2)),
                 "MYSTERY_CHANNEL_ID": int(parsed.get("MYSTERY_CHANNEL_ID", 0)),
-                "ROCKET_BOT_CHANNEL_ID": int(parsed.get("ROCKET_BOT_CHANNEL_ID", 0)),
                 "PLAYER_LABELS": [v.strip() for v in parsed.get("PLAYER_LABELS", "Player 1,Player 2").split(",")],
                 "TIMEOUT_REASON": parsed.get("TIMEOUT_REASON", "Time's up!"),
                 "TIP_TEXT": parsed.get("TIP_TEXT", "Be kind!"),
@@ -130,7 +129,7 @@ class MysteryDate(commands.Cog):
         for player in players:
             try:
                 # You can adjust the number of gems if you want
-                await award_points(self.bot, player, 50, dm=True)
+                await award_points(self.bot, player, 10, dm=True)
             except Exception as e:
                 print(f"[DEBUG] Could not award points to {player}: {e}")
 
@@ -168,16 +167,16 @@ class MysteryDate(commands.Cog):
         if not admin_channel or not await self.load_settings_from_admin(admin_channel):
             return await ctx.send("❌ Settings not ready. Ask an admin.")
 
-        rocket_bot_channel_id = self.settings.get("ROCKET_BOT_CHANNEL_ID", 0)
-        rocket_bot_channel = guild.get_channel(rocket_bot_channel_id)
+        chosen_mystery_channel_id = self.settings.get("MYSTERY_CHANNEL_ID", 0)
+        chosen_channel = guild.get_channel(chosen_mystery_channel_id)
         if ctx.channel.id != mystery_channel_id:
             try:
                 await ctx.author.send(
-                    f"❌ You can only start a Mystery Date in {rocket_bot_channel.mention}."
+                    f"❌ You can only start a Mystery Date in {chosen_channel.mention}."
                 )
             except:
                 # fallback if DM fails
-                await ctx.send(f"❌ You must use this command in {rocket_bot_channel.mention}.", delete_after=10)
+                await ctx.send(f"❌ You must use this command in {chosen_channel.mention}.", delete_after=10)
             return
 
         if action != "start":
@@ -223,7 +222,7 @@ class MysteryDate(commands.Cog):
             await ctx.send(f"💥 {ctx.author.mention}, you were added to **{player_label}**.")
 
         # Flavor messages mentioning Rocket Bot channel
-        rocket_mention = rocket_bot_channel.mention if rocket_bot_channel else ctx.channel.mention
+        rocket_mention = chosen_channel.mention if chosen_channel else ctx.channel.mention
         await ctx.send(random.choice([
             f"🎭 **Player 1** is lurking in the Mystery Room…\n@everyone dare to click **Mystery Date** in {rocket_mention} and claim the spot of Player 2?",
             f"💘 Player 1 waits in the shadows…\n@everyone who’s brave enough to smash **Mystery Date** in {rocket_mention} and become Player 2?",
