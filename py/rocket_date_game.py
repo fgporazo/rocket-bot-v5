@@ -133,7 +133,7 @@ class RocketDate(commands.Cog):
 
         # Check if all quests are done
         all_done = all(re.search(rf"{qid}1", quest_status_raw) for qid in DAILY_QUEST_IDS)
-        award_gems = 50
+        award_gems = 100
         # Footer logic
         if reward_claimed == "YES":
             footer_text = "\n💎 You already claimed your reward. Come back tomorrow!"
