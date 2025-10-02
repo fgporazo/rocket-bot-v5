@@ -187,7 +187,7 @@ class RocketSabotage(commands.Cog):
         shop_channel = self.bot.get_channel(SHOP_PUBLIC_CHANNEL_ID)
         if shop_channel:
             embed.add_field(name="\n", value=f"🛒 Visit {shop_channel.mention} to buy items", inline=False)
-        embed.add_field(name="\n", value=f"📖 Type `.pi` to show Poke Item (Sabotage Game) Commands Guide", inline=False)
+        embed.add_field(name="\n", value=f"📖 Type `.pi` to show Poke Item (Sabotage Game) Commands Guide\n📖 Type `.pokebag` to show Poke Bag", inline=False)
         await ctx.send(embed=embed)
 
         if target == ctx.author:
@@ -209,6 +209,7 @@ class RocketSabotage(commands.Cog):
         commands_list.sort()
         help_text = "\n".join(commands_list)
         await ctx.send(f"📖 **Team Rocket - Poke Item (Sabotage Game) Commands Guide**\n{help_text}")
+        await ctx.send(f"🛒 Visit <#{SHOP_PUBLIC_CHANNEL_ID}> to buy items.")
 
     @pokeitem.command(name="binocular",aliases=["bino", "james"],help="Use on a player to view their Pokebag items and Wobbuffet shields.")
     async def pi_binocular(self, ctx, member: discord.Member = None):
@@ -247,7 +248,6 @@ class RocketSabotage(commands.Cog):
             f"📢 {mention}, assemble and set up a date immediately!\n"
             f"⏳ If no one assists within 5 minutes, {mention} must give **double the potion price gems** to {ctx.author.mention}."
         )
-
 
     @pokeitem.command(name="vacuum",aliases=["vac", "meowth"], help="Use to steal 20% of another player's gems (fails if they have Wobbuffet Shield).")
     async def pi_vacuum(self, ctx, member: discord.Member = None):
@@ -317,7 +317,42 @@ class RocketSabotage(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    # -------------------- GEMS --------------------
+    @pokeitem.command(
+        name="gems",
+        aliases=["gem", "points"],
+        help="Check your Rocketverse gems! 💎"
+    )
+    @commands.cooldown(rate=20, per=300, type=commands.BucketType.user)
+    async def pi_gems(self, ctx: commands.Context):
+        rocket_shop_cog = self.bot.get_cog("RocketShop")
+        if not rocket_shop_cog:
+            return await safe_send(ctx, "⚠️ RocketShop cog is not loaded.")
 
+        channel = self.bot.get_channel(LEADERBOARD_CHANNEL_ID)
+        if not channel:
+            return await safe_send(ctx, "⚠️ Leaderboard channel not found!")
+
+        try:
+            msg = [m async for m in channel.history(limit=1, oldest_first=False)][0]
+        except IndexError:
+            return await safe_send(ctx, "⚠️ No leaderboard message found!")
+
+        user_id_str = str(ctx.author.id)
+        gems = 0
+
+        for line in msg.content.splitlines():
+            parts = [p.strip() for p in line.split("-")]
+            if len(parts) == 3:
+                _, uid, gems_str = parts
+                if uid == user_id_str:
+                    try:
+                        gems = int(re.sub(r"\D", "", gems_str))
+                    except ValueError:
+                        gems = 0
+                    break
+
+        await ctx.send(f"💎 {ctx.author.mention}, you currently have **{gems:,} gems**!")  # <-- commas here
 # ------------------------
 # Shield Button View
 # ------------------------
@@ -333,7 +368,7 @@ class ShieldView(discord.ui.View):
     async def show_protection(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.owner_id:
             await interaction.response.send_message(
-                "❌ Only the player who used binocular or pokebag command can view protection check.", ephemeral=True
+                "❌ Only the player who used `.pi binocular` or `.pokebag` command can view protection check.", ephemeral=True
             )
             return
 
