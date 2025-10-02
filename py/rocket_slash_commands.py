@@ -101,12 +101,12 @@ class CommandButton(discord.ui.Button):
         ctx = await self.bot.get_context(fake_message, cls=commands.Context)
         if ctx.command:
             await self.bot.invoke(ctx)
-        await fake_message.delete()
+        #await fake_message.delete()
 
         # ----------------- Notify user with clickable links -----------------
         links = [f"[**{ch.name}**]({ch.jump_url})" for ch in run_channels]
         await interaction.followup.send(
-            f"✅ Go to: {', '.join(links)} . Check your DMs!",
+            f"Check your DMs!",
             ephemeral=True
         )
 
