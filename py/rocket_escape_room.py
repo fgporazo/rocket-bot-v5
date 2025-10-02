@@ -7,6 +7,8 @@ import os
 import datetime
 from helpers import (award_points)
 
+ESCAPE_ROOM_CHANNEL_ID = int(os.getenv("ESCAPE_ROOM_CHANNEL_ID", 0))
+
 class RocketEscapeRoom(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -26,6 +28,7 @@ class RocketEscapeRoom(commands.Cog):
         commands_list.sort()
         help_text = "\n".join(commands_list)
         await ctx.send(f"📖 **Team Rocket Escape Room Commands Guide**\n{help_text}")
+        await ctx.send(f"Go to <#{ESCAPE_ROOM_CHANNEL_ID}> now.")
 
     @er.command(name="start",help="Start a dramatic Team Rocket escape mission")
     async def er_start(self, ctx):
