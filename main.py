@@ -55,18 +55,19 @@ async def on_guild_join(guild):
 # ─── Load all extensions from py folder ─────────────
 async def load_extensions():
     extensions = [
+        "py.rocket_arena",
         "py.rocket_slash_commands",
         "py.rocket_date_game",
         "py.rocket_campfire",
         "py.rocket_compatibility_test",
         "py.rocket_drawing_date",
         "py.rocket_escape_room",
-        "py.rocket_secret_admirer",
+        "py.rocket_secret",
         "py.rocket_mystery_date",
         "py.rocket_world_clock",
         "py.rocket_slash_news",
         "py.rocket_montage_challenge",
-        "py.rocket_profile",
+        "py.rocket_welcome",
         "py.rocket_press_quest",
         "py.rocket_ship",
         "py.rocket_lightning_round",
