@@ -271,7 +271,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="💘 Team Rocket spreads love and chaos!")
         await safe_send(ctx, embed=embed)
 
-        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
 
     # -------------------- REJECT --------------------
     @tr.command(name="dateno", description="Reject an e-date request from a user 💔 (optionally add a reason)")
@@ -303,7 +303,7 @@ class RocketDate(commands.Cog):
         )
         embed.set_footer(text="😼 Don’t break too many hearts, Rocket!")
         await safe_send(ctx, embed=embed)
-        await award_points(self.bot, ctx.author, 3, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
     # -------------------- HISTORY --------------------
     @tr.command(name="history", description="💌 Show e-date history")
     @commands.cooldown(5, 60, commands.BucketType.user)
