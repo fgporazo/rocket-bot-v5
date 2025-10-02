@@ -62,7 +62,7 @@ class RocketRegistrationForm(discord.ui.Modal, title="🚀 Team Rocket Registrat
             try:
                 drawing_channel = interaction.client.get_channel(DRAWING_SUBMISSION_CHANNEL)
                 if drawing_channel:
-                    async for msg in drawing_channel.history(limit=50, oldest_first=False):
+                    async for msg in drawing_channel.history(limit=100, oldest_first=False):
                         if msg.author.id == interaction.user.id and msg.attachments:
                             attachment = msg.attachments[0]
                             file_bytes = await attachment.read()
