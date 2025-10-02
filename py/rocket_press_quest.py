@@ -120,7 +120,7 @@ class PressQuest(commands.Cog):
 
             # 🎉 Bonus comes AFTER summary
             if answers and all(a not in ["⏳ No Response"] for _, a in answers):
-                await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+                await award_points(self.bot, ctx.author, 15, notify_channel=ctx.channel)
                 await update_daily_quest(self.bot, ctx.author, "d")
                 await ctx.send(
                     f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 diamonds!**")
