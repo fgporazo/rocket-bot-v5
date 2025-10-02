@@ -144,8 +144,8 @@ class DateView:
         embed.set_footer(text="🎨 Jessie & James proudly present your art date 💕")
 
         await self.ctx.send(embed=embed, file=merged_file)
-        await award_points(self.ctx.bot, self.author, 15, notify_channel=self.ctx.channel)
-        await award_points(self.ctx.bot, self.target, 15, notify_channel=self.ctx.channel)
+        await award_points(self.ctx.bot, self.author, 25, notify_channel=self.ctx.channel)
+        await award_points(self.ctx.bot, self.target, 25, notify_channel=self.ctx.channel)
 
 class RocketDrawingDate(commands.Cog):
     def __init__(self, bot):
