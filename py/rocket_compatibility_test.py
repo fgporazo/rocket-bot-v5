@@ -183,8 +183,8 @@ class CompatibilityTest(commands.Cog):
         )
         percentage = (matches / len(questions)) * 100
         # Award points to both players (pass actual Member objects!)
-        await award_points(self.bot, ctx.author, 15, notify_channel=ctx.channel)
-        await award_points(self.bot, member, 15, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 25, notify_channel=ctx.channel)
+        await award_points(self.bot, member, 25, notify_channel=ctx.channel)
         # Pick GIF/comment dynamically from GIF JSON
         if percentage == 100:
             key = "success"
