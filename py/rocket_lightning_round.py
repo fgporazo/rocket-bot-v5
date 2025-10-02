@@ -159,7 +159,7 @@ class LightningRound(commands.Cog):
         for uid in self.participants:
             member = ctx.guild.get_member(uid)
             if member:
-                await award_points(self.bot, member, 50, notify_channel=ctx.channel)
+                await award_points(self.bot, member, 15, notify_channel=ctx.channel)
                 reward_lines.append(f"🎉 <@{uid}> — +50 💎")
 
 
@@ -204,10 +204,46 @@ class LightningRound(commands.Cog):
         admin_channel = self.bot.get_channel(self.admin_channel_id)
         await self.update_leaderboard(admin_channel)
 
-    @lr.command(name="lb", help="Show the Lightning Round leaderboard")
-    async def lr_leaderboard(self, ctx):
+    @lr.command(name="lb", help="Show Lightning Round leaderboard")
+    async def lr_leaderboard(self, ctx: commands.Context):
+        """Command to display sorted leaderboard"""
         admin_channel = self.bot.get_channel(self.admin_channel_id)
-        await self.show_leaderboard(ctx, admin_channel)
+        if not admin_channel:
+            await ctx.send("⚠️ Leaderboard not configured.")
+            return
+
+        # Fetch leaderboard message (3rd message in admin channel)
+        msgs = [msg async for msg in admin_channel.history(limit=3, oldest_first=False)]
+        msgs.reverse()
+        leaderboard_msg = msgs[2] if len(msgs) >= 3 else None
+
+        lb_entries = []
+        if leaderboard_msg and leaderboard_msg.content.strip():
+            parsed_scores = []
+            for line in leaderboard_msg.content.splitlines():
+                try:
+                    name_id, score = line.split("|")
+                    name, uid = name_id.rsplit("-", 1)
+                    parsed_scores.append((name.strip(), int(uid.strip()), int(score.strip())))
+                except:
+                    continue
+
+            # ✅ Sort by score descending
+            parsed_scores.sort(key=lambda x: x[2], reverse=True)
+
+            for i, (name, uid, score) in enumerate(parsed_scores):
+                medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i + 1}️⃣"
+                lb_entries.append(f"{medal} {name} — {score} ⭐")
+        else:
+            lb_entries.append("No scores yet. Type `.lr start` to play!")
+
+        embed = discord.Embed(
+            title="🏆 Lightning Round Leaderboard",
+            description="Smartest Pokécandidates in Rocketverse\n\n" + "\n".join(lb_entries),
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text="Are you smarter than your Pokécandidate? ⭐")
+        await ctx.send(embed=embed)
 
     # ------------------------------
     async def update_leaderboard(self, admin_channel):
