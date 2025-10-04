@@ -127,7 +127,7 @@ class SecretAdmirer(commands.Cog):
         if not guild_id:
             mutuals = [g for g in self.bot.guilds if g.get_member(ctx.author.id)]
             if not mutuals:
-                return await ctx.send("⚠️ Go to the RocketBot channel and click the Secret Admirer button to get started.")
+                return await ctx.send("⚠️ Go to the Secret channel and click the Send Notes button to get started.")
             guild_id = mutuals[0].id
             sessions[ctx.author.id] = guild_id
 
@@ -243,7 +243,7 @@ class SecretAdmirer(commands.Cog):
             return await ctx.send(f"⚠️ You’ve reached your daily limit of {MAX_DAILY} messages. Try again tomorrow.")
 
         if ctx.author.id not in sessions:
-            return await ctx.send("⚠️ Go to the RocketBot channel and click the Secret Admirer button to get started.")
+            return await ctx.send("⚠️ Go to the Secret channel and click the Secret Notes button to get started.")
 
         image_url = None
 
