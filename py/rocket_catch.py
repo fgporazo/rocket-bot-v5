@@ -3,6 +3,7 @@ import json
 import random
 import asyncio
 import discord
+from datetime import datetime, timedelta
 from discord.ext import commands
 from discord import app_commands
 from helpers import award_points, is_admin  # your helpers
@@ -34,6 +35,7 @@ FAIL_LINES = [
     "💥 Meowth: ‘Blasted off again... without even catching it!’"
 ]
 
+
 # -----------------------------
 # Custom admin check decorator
 # -----------------------------
@@ -41,6 +43,7 @@ def admin_only():
     async def predicate(interaction: discord.Interaction) -> bool:
         return is_admin(interaction.user)
     return app_commands.check(predicate)
+
 
 # -----------------------------
 # Catch View with dynamic buttons
@@ -54,7 +57,7 @@ class CatchView(discord.ui.View):
         self.next_callback = next_callback
         self.timeout_seconds = timeout_seconds
 
-        # Shuffle choices so correct one isn't always first
+        # Shuffle gadget choices
         choices_list = list(pokemon["choices"].items())
         random.shuffle(choices_list)
 
@@ -66,20 +69,54 @@ class CatchView(discord.ui.View):
             button.callback = self.make_callback(choice, desc)
             self.add_item(button)
 
-        # Start fallback task
         asyncio.create_task(self.fallback_task())
 
     def make_callback(self, choice, desc):
         async def callback(interaction: discord.Interaction):
+            user = interaction.user
+            rc_cog = self.bot.get_cog("RocketCatch")
+            now = datetime.utcnow()
+
+            # Reset user attempts if 1 hour passed since last try
+            if user.id in rc_cog.user_attempts:
+                last_time = rc_cog.user_attempts[user.id]["last"]
+                if now - last_time > timedelta(hours=1):
+                    rc_cog.user_attempts[user.id] = {"count": 0, "last": now}
+
+            # Check cooldown
+            cooldown_end = rc_cog.cooldowns.get(user.id)
+            if cooldown_end and now < cooldown_end:
+                remaining = int((cooldown_end - now).total_seconds() / 60)
+                await interaction.response.send_message(
+                    f"⏱️ You’re on cooldown for another {remaining} minutes due to excessive catching!",
+                    ephemeral=True
+                )
+                return
+
+            # Update attempts
+            data = rc_cog.user_attempts.get(user.id, {"count": 0, "last": now})
+            data["count"] += 1
+            data["last"] = now
+            rc_cog.user_attempts[user.id] = data
+
+            # Apply cooldown if reached 10
+            if data["count"] >= 10:
+                rc_cog.cooldowns[user.id] = now + timedelta(minutes=30)
+                rc_cog.user_attempts[user.id] = {"count": 0, "last": now}
+                await interaction.response.send_message(
+                    "🚫 You’ve caught too many Pokémon too fast! You’re on a 30-minute cooldown!",
+                    ephemeral=True
+                )
+                return
+
+            # Proceed with normal catching logic
             if self.answered:
                 await interaction.response.send_message("❌ Someone already made the choice!", ephemeral=True)
                 return
             self.answered = True
 
-            # Immediately defer to avoid interaction timeout
             await interaction.response.defer(ephemeral=True)
 
-            # Disable all buttons visually
             for child in self.children:
                 child.disabled = True
             await interaction.message.edit(view=self)
@@ -87,14 +124,13 @@ class CatchView(discord.ui.View):
             is_correct = "✅" in desc
             pokemon_name = self.pokemon["pokemon"]
 
-            # Public result embed
             if is_correct:
-                title = f"✅ {interaction.user.display_name} caught **{pokemon_name}!**"
+                title = f"✅ {user.display_name} caught **{pokemon_name}!**"
                 line = random.choice(SUCCESS_LINES).format(pokemon=pokemon_name)
                 color = discord.Color.green()
-                await award_points(self.bot, interaction.user, 1, notify_channel=interaction.channel)
+                await award_points(self.bot, user, 3, notify_channel=interaction.channel)
             else:
-                title = f"❌ {interaction.user.display_name} chose a Wrong Gadget! Failed to catch **{pokemon_name}!**"
+                title = f"❌ {user.display_name} chose a Wrong Gadget! Failed to catch **{pokemon_name}!**"
                 line = random.choice(FAIL_LINES).format(pokemon=pokemon_name)
                 color = discord.Color.red()
 
@@ -102,34 +138,26 @@ class CatchView(discord.ui.View):
             embed.set_thumbnail(url=self.pokemon.get("img_url", ""))
             await interaction.followup.send(embed=embed, ephemeral=False)
 
-            # Ephemeral private explanation
             reason = f"*{choice} — {desc.replace('✅ ', '').replace('❌ ', '')}*"
             await interaction.followup.send(reason, ephemeral=True)
 
-            # Post next Pokémon after short delay
             await asyncio.sleep(2)
             if self.next_callback:
                 await self.next_callback()
-
         return callback
 
     async def fallback_task(self):
-        """Move on automatically if no one clicks within timeout."""
         await asyncio.sleep(self.timeout_seconds)
         if not self.answered:
             self.answered = True
-            # Disable buttons visually
             for child in self.children:
                 child.disabled = True
-            # Edit original message if exists
             try:
-                msg = self.message
-                if msg:
-                    await msg.edit(view=self)
+                if self.message:
+                    await self.message.edit(view=self)
             except Exception:
                 pass
 
-            # Send time's up embed
             pokemon_name = self.pokemon["pokemon"]
             embed = discord.Embed(
                 title=f"⏱️ Time's up! No one caught **{pokemon_name}**",
@@ -140,9 +168,9 @@ class CatchView(discord.ui.View):
             if channel:
                 await channel.send(embed=embed)
 
-            # Move on to next Pokémon
             if self.next_callback:
                 await self.next_callback()
+
 
 # -----------------------------
 # Rocket Catch Cog
@@ -154,9 +182,11 @@ class RocketCatch(commands.Cog):
         self.bot = bot
         self.pokemon_data = []
         self.pokemon_queue = []
+        self.user_attempts = {}  # {user_id: {"count": int, "last": datetime}}
+        self.cooldowns = {}  # {user_id: datetime}
 
     async def load_latest_json_from_channel(self):
-        """Fetch the latest JSON attachment from the admin upload channel."""
+        """Fetch the latest JSON attachment from admin upload channel."""
         channel = self.bot.get_channel(ADMIN_ROCKET_LIST_CHANNEL_ID)
         if not channel:
             print("⚠️ Admin channel not found.")
@@ -185,7 +215,6 @@ class RocketCatch(commands.Cog):
             random.shuffle(self.pokemon_queue)
 
         if not self.pokemon_queue:
-            # All Pokémon used, reshuffle
             self.pokemon_queue = self.pokemon_data.copy()
             random.shuffle(self.pokemon_queue)
 
@@ -206,7 +235,6 @@ class RocketCatch(commands.Cog):
 
         view = CatchView(self.bot, pokemon, self.post_next_pokemon)
         msg = await channel.send(embed=embed, view=view)
-        # Save message reference for fallback edits
         view.message = msg
 
     @app_commands.command(
