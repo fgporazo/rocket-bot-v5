@@ -220,11 +220,10 @@ class VillainShip(commands.Cog):
                   f"🤡 Below 40% → Clumsy villains\n"
                   f"😼 40–79% → Functional chaos\n"
                   f"😈 80–100% → Pure evil excellence\n\n"
-                  f"🎁 Earned **25 points!**"
             ),
             color=color,
         )
-        embed.add_field(name="Team Rocket Says:", value=line, inline=False)
+        embed.add_field(name="", value=line, inline=False)
         embed.set_image(url="attachment://trio.png")
 
         await msg.edit(content=None, embed=embed, attachments=[file])
