@@ -5,7 +5,7 @@ from PIL import Image
 import aiohttp
 import io
 import os
-from helpers import (award_points)
+from helpers import award_points
 
 # Read admin IDs from environment variable
 ADMIN_IDS = set(int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip())
@@ -29,8 +29,11 @@ class VillainShip(commands.Cog):
             "Warning: Chaos and mischief levels off the charts—catch fire extinguishers ready!"
         ]
 
-    def generate_percentage(self):
-        return random.randint(1, 100)
+    # -------------------------------------------------------
+    # Utility
+    # -------------------------------------------------------
+    def generate_percentage(self, low=1, high=100):
+        return random.randint(low, high)
 
     async def merge_avatars(self, urls: list):
         """Merge multiple avatar URLs horizontally and return a BytesIO image."""
@@ -56,72 +59,103 @@ class VillainShip(commands.Cog):
         image_bytes.seek(0)
         return image_bytes
 
+    # -------------------------------------------------------
+    # Villain logic helper
+    # -------------------------------------------------------
+    def calculate_villain_percentage(self, author, members, bot_member):
+        all_ids = [m.id for m in members] + [author.id]
+
+        # If bot is included, villain level = 0
+        if bot_member.id in all_ids:
+            return 0
+
+        # If any mention is admin -> 100%
+        if any(mid in ADMIN_IDS for mid in all_ids if mid != author.id):
+            return 100
+
+        # If author is admin -> random below 90
+        if author.id in ADMIN_IDS:
+            return self.generate_percentage(1, 90)
+
+        # Default random 1–100
+        return self.generate_percentage()
+
+    # -------------------------------------------------------
+    # DUO COMMAND
+    # -------------------------------------------------------
     @commands.command()
     @commands.cooldown(20, 300, commands.BucketType.user)
-    async def duo(self, ctx, member: discord.Member = None):
-        if member is None:
-            member = ctx.guild.me  # Default to bot if no mention
+    async def duo(self, ctx, *members: discord.Member):
+        """Villain duo command."""
+        if len(members) == 1:
+            # author + one mention
+            pair = [ctx.author, members[0]]
+        elif len(members) == 2:
+            # two mentions only
+            pair = [members[0], members[1]]
+        else:
+            await ctx.send("❌ Invalid usage! Use `.duo @user` or `.duo @user1 @user2`.")
+            return
 
         loading = await ctx.send("⚡ Calculating villain chaos… hold on!")
 
-        # Determine villain percentage
-        if member.id == ctx.guild.me.id:
-            percentage = 0  # Always 0% if duo is with the bot
-        elif ctx.author.id in ADMIN_IDS or member.id in ADMIN_IDS:
-            percentage = 100
-        else:
-            percentage = self.generate_percentage()
-
+        percentage = self.calculate_villain_percentage(ctx.author, pair, ctx.guild.me)
         message = random.choice(self.duo_messages)
-
-        image_bytes = await self.merge_avatars([ctx.author.display_avatar.url, member.display_avatar.url])
+        urls = [m.display_avatar.url for m in pair]
+        image_bytes = await self.merge_avatars(urls)
         file = discord.File(fp=image_bytes, filename="duo.png")
 
         embed = discord.Embed(
             title=f"😈 Villain Duo Alert! {percentage}%",
-            description=f"{ctx.author.mention} ⚡ {member.mention}\n**Villain Level:** {percentage}%",
+            description=f"{pair[0].mention} ⚡ {pair[1].mention}\n**Villain Level:** {percentage}%",
             color=discord.Color.red()
         )
-        embed.set_image(url="attachment://duo.png")
         embed.add_field(name="", value=message)
+        embed.set_image(url="attachment://duo.png")
 
         await loading.edit(content=None, embed=embed, attachments=[file])
-        await award_points(self.bot, ctx.author, 10, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 25, notify_channel=ctx.channel)
+
+    # -------------------------------------------------------
+    # TRIO COMMAND
+    # -------------------------------------------------------
     @commands.command()
     @commands.cooldown(20, 300, commands.BucketType.user)
-    async def trio(self, ctx, member1: discord.Member = None, member2: discord.Member = None):
-        if member1 is None:
-            member1 = ctx.guild.me
-        if member2 is None:
-            member2 = ctx.author
+    async def trio(self, ctx, *members: discord.Member):
+        """Villain trio command."""
+        if len(members) == 1:
+            await ctx.send("❌ Mention at least 2 people for a trio! Example: `.trio @user1 @user2`")
+            return
+        elif len(members) == 2:
+            trio_members = [ctx.author, members[0], members[1]]
+        elif len(members) == 3:
+            trio_members = [members[0], members[1], members[2]]
+        else:
+            await ctx.send("❌ Invalid usage! You can only mention up to 3 users.")
+            return
 
         loading = await ctx.send("⚡ Assembling villain squad… chaos imminent!")
 
-        # Determine villain percentage
-        if ctx.author.id in ADMIN_IDS or member1.id in ADMIN_IDS or member2.id in ADMIN_IDS:
-            percentage = 100
-        else:
-            percentage = self.generate_percentage()
-
+        percentage = self.calculate_villain_percentage(ctx.author, trio_members, ctx.guild.me)
         message = random.choice(self.trio_messages)
-
-        image_bytes = await self.merge_avatars([
-            ctx.author.display_avatar.url,
-            member1.display_avatar.url,
-            member2.display_avatar.url
-        ])
+        urls = [m.display_avatar.url for m in trio_members]
+        image_bytes = await self.merge_avatars(urls)
         file = discord.File(fp=image_bytes, filename="trio.png")
 
         embed = discord.Embed(
-            title=f"😈 Villain Trio Alert! {percentage}%",
-            description=f"{ctx.author.mention} ⚡ {member1.mention} ⚡ {member2.mention}\n**Villain Level:** {percentage}%",
+            title=f"🔥 Villain Trio Alert! {percentage}%",
+            description=" ⚡ ".join(m.mention for m in trio_members) + f"\n**Villain Level:** {percentage}%",
             color=discord.Color.dark_red()
         )
-        embed.set_image(url="attachment://trio.png")
         embed.add_field(name="", value=message)
+        embed.set_image(url="attachment://trio.png")
 
         await loading.edit(content=None, embed=embed, attachments=[file])
-        await award_points(self.bot, ctx.author, 10, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 25, notify_channel=ctx.channel)
+
+    # -------------------------------------------------------
+    # ERROR HANDLER
+    # -------------------------------------------------------
     @duo.error
     @trio.error
     async def cooldown_error(self, ctx, error):
