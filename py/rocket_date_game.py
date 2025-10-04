@@ -242,7 +242,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="🚀 Love is a battlefield, choose wisely.")
         await safe_send(ctx, embed=embed)
         # Award +1 point for using this command
-        await award_points(self.bot, ctx.author, 5,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 50,notify_channel=ctx.channel)
     # -------------------- ACCEPT --------------------
     @tr.command(name="dateyes", description="Accept an e-date request from other PokeCandidates 💖")
     @commands.cooldown(5, 60, commands.BucketType.user)
