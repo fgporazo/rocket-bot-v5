@@ -254,7 +254,7 @@ class SecretAdmirer(commands.Cog):
         )
 
         try:
-            reward_amount = 30
+            reward_amount = 55
             await ctx.author.send(
                 f"🎉 Congratulations! You’ve earned ** 💎 {reward_amount} gems** "
                 f"for bravely sending a Secret Admirer confession 💖🚀"
