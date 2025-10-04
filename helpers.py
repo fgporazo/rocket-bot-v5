@@ -450,3 +450,9 @@ async def update_daily_quest(bot: commands.Bot, member: discord.Member, quest_id
     # Only edit if a change was made
     if lines != updated_lines:
         await last_message.edit(content="\n".join(updated_lines))
+
+
+ONGOING_SESSIONS = {
+    "mystery_date": {},  # guild.id -> True/False
+    "talk_to_stranger": {}  # guild.id -> True/False
+}
