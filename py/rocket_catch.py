@@ -128,7 +128,7 @@ class CatchView(discord.ui.View):
                 title = f"✅ {user.display_name} caught **{pokemon_name}!**"
                 line = random.choice(SUCCESS_LINES).format(pokemon=pokemon_name)
                 color = discord.Color.green()
-                await award_points(self.bot, user, 3, notify_channel=interaction.channel)
+                await award_points(self.bot, user, 1, notify_channel=interaction.channel)
             else:
                 title = f"❌ {user.display_name} chose a Wrong Gadget! Failed to catch **{pokemon_name}!**"
                 line = random.choice(FAIL_LINES).format(pokemon=pokemon_name)
