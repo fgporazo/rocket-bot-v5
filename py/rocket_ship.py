@@ -227,7 +227,7 @@ class VillainShip(commands.Cog):
         embed.set_image(url="attachment://trio.png")
 
         await msg.edit(content=None, embed=embed, attachments=[file])
-        await award_points(self.bot, ctx.author, 25, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
 
     # -------------------------------------------------------
     # ⏱ COOLDOWN HANDLER
