@@ -467,7 +467,7 @@ class RocketDate(commands.Cog):
 
         # --- Roles setup ---
         ELITE_ROLE_NAME = "Rocket Elites 🎖️"
-        CHAMPION_ROLE_NAME = "Rocket Elite Champion 🎖️"
+        CHAMPION_ROLE_NAME = "Rocket Elite Commander 🎖️"
         champion_color = discord.Colour(0xC04040)  # dark red
         elite_color = discord.Colour(0xFF6666)  # pastel red
 
