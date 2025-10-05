@@ -44,6 +44,21 @@ def init_db():
     conn.commit()
     conn.close()
 
+
+async def reset_heartthrob_role(guild: discord.Guild, role_name: str, top_member_id: int) -> Optional[discord.Role]:
+    """Remove the Heartthrob role from anyone except the top scorer."""
+    role = discord.utils.get(guild.roles, name=role_name)
+    if not role:
+        return None
+
+    for member in guild.members:
+        if role in member.roles and member.id != top_member_id:
+            try:
+                await member.remove_roles(role, reason="Reset Heartthrob role")
+            except Exception as e:
+                print(f"[ERROR] Cannot remove role from {member}: {e}")
+    return role
+
 # ─── Role-based checks ─────────────────────────────
 def is_edate_gamer(member: discord.Member) -> bool:
     """Return True if member has either PokeCandidates or TEAM ROCKET roles."""
