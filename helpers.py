@@ -14,9 +14,9 @@ from discord.ext import commands
 from dotenv import load_dotenv
 load_dotenv()
 # ─── Database Path ─────────────────────────────
-#DB_PATH = "/data/rocket.db"
+DB_PATH = "/data/rocket.db"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "rocket.db")
+#DB_PATH = os.path.join(BASE_DIR, "rocket.db")
 
 # ─── Daily Limits ─────────────────────────────
 ADMIN_DATE_LIMIT_PER_DAY = 5
