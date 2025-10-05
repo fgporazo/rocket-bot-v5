@@ -100,11 +100,11 @@ class VillainShip(commands.Cog):
     # -------------------------------------------------------
     # 🧬 Villain Percentage Logic
     # -------------------------------------------------------
-    def calculate_villain_percentage(self, author, members):
+    def calculate_villain_percentage(self, author, members, bot_member):
         all_ids = [m.id for m in members] + [author.id]
 
-        # Exclude bots completely
-        if any(m.bot for m in members) or author.bot:
+        # If bot involved → automatic 0%
+        if bot_member.id in all_ids or any(m.bot for m in members):
             return 0
 
         author_is_admin = author.id in ADMIN_IDS
@@ -141,7 +141,7 @@ class VillainShip(commands.Cog):
     async def duo(self, ctx, *members: discord.Member):
         """Villain duo compatibility check."""
         try:
-            ctx.command.reset_cooldown(ctx)
+            ctx.command.reset_cooldown(ctx)  # ensure cooldown resets if errored before awarding
         except:
             pass
 
@@ -150,15 +150,17 @@ class VillainShip(commands.Cog):
         elif len(members) == 2:
             pair = [members[0], members[1]]
         else:
-            return await ctx.reply("❌ Invalid usage! Use `.duo @user` or `.duo @user1 @user2`.")
+            await ctx.reply("❌ Invalid usage! Use `.duo @user` or `.duo @user1 @user2`.")
+            return
 
-        # ❌ Exclude bots
-        if any(m.bot for m in pair) or ctx.author.bot:
-            return await ctx.reply("❌ Bots can’t be part of the villain duo, silly!")
+        # 🚫 Prevent self-duo
+        if pair[0].id == pair[1].id:
+            await ctx.reply("💔 You can’t form a villain duo with yourself, silly!")
+            return
 
         msg = await ctx.send("⚡ Calculating villain chaos… please wait!")
 
-        percent = self.calculate_villain_percentage(ctx.author, pair)
+        percent = self.calculate_villain_percentage(ctx.author, pair, ctx.guild.me)
         emoji, color = self.villain_color_and_emoji(percent)
         category = "low" if percent < 40 else "medium" if percent < 80 else "high"
         line = random.choice(self.duo_messages[category])
@@ -183,7 +185,7 @@ class VillainShip(commands.Cog):
 
         await msg.edit(content=None, embed=embed, attachments=[file])
 
-        # ✅ Award points only if not in cooldown
+        # ✅ Award only if not in cooldown
         bucket = ctx.command._buckets.get_bucket(ctx.message)
         retry_after = bucket.update_rate_limit()
         if retry_after is None:
@@ -202,19 +204,25 @@ class VillainShip(commands.Cog):
             pass
 
         if len(members) < 2:
-            return await ctx.reply("❌ Mention at least **2 people** for a trio! Example: `.trio @user1 @user2`")
-        elif len(members) > 3:
-            return await ctx.reply("❌ You can only mention up to 3 users.")
+            await ctx.reply("❌ Mention at least **2 people** for a trio! Example: `.trio @user1 @user2`")
+            return
+        elif len(members) == 2:
+            trio_members = [ctx.author, members[0], members[1]]
+        elif len(members) == 3:
+            trio_members = list(members)
+        else:
+            await ctx.reply("❌ Invalid usage! You can only mention up to 3 users.")
+            return
 
-        trio_members = [ctx.author, *members]
-
-        # ❌ Exclude bots
-        if any(m.bot for m in trio_members):
-            return await ctx.reply("❌ Bots can’t be part of the villain trio, silly!")
+        # 🚫 Prevent duplicate users (including self-doubles)
+        unique_ids = {m.id for m in trio_members}
+        if len(unique_ids) < 3:
+            await ctx.reply("💔 You can’t form a trio with duplicates! No cloning allowed, villain.")
+            return
 
         msg = await ctx.send("⚡ Assembling villain squad… chaos imminent!")
 
-        percent = self.calculate_villain_percentage(ctx.author, trio_members)
+        percent = self.calculate_villain_percentage(ctx.author, trio_members, ctx.guild.me)
         emoji, color = self.villain_color_and_emoji(percent)
         category = "low" if percent < 40 else "medium" if percent < 80 else "high"
         line = random.choice(self.trio_messages[category])
@@ -226,11 +234,11 @@ class VillainShip(commands.Cog):
         embed = discord.Embed(
             title=f"{emoji} Villain Trio Compatibility — {percent}%",
             description=(
-                " ⚡ ".join(m.mention for m in trio_members)
-                + f"\n**Villain Level:** {percent}%\n\n"
-                  f"🤡 Below 40% → Clumsy villains\n"
-                  f"😼 40–79% → Functional chaos\n"
-                  f"😈 80–100% → Pure evil excellence\n\n"
+                    " ⚡ ".join(m.mention for m in trio_members)
+                    + f"\n**Villain Level:** {percent}%\n\n"
+                      f"🤡 Below 40% → Clumsy villains\n"
+                      f"😼 40–79% → Functional chaos\n"
+                      f"😈 80–100% → Pure evil excellence\n\n"
             ),
             color=color,
         )
@@ -239,7 +247,7 @@ class VillainShip(commands.Cog):
 
         await msg.edit(content=None, embed=embed, attachments=[file])
 
-        # ✅ Award points only if not in cooldown
+        # ✅ Award only if not in cooldown
         bucket = ctx.command._buckets.get_bucket(ctx.message)
         retry_after = bucket.update_rate_limit()
         if retry_after is None:
