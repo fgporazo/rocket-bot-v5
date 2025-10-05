@@ -143,7 +143,7 @@ class VillainShip(commands.Cog):
     # 💞 DUO COMMAND
     # -------------------------------------------------------
     @commands.command()
-    @commands.cooldown(20, 300, commands.BucketType.user)
+    @commands.cooldown(10, 900, commands.BucketType.user)
     async def duo(self, ctx, *members: discord.Member):
         """Villain duo compatibility check."""
         if len(members) == 1:
@@ -181,13 +181,13 @@ class VillainShip(commands.Cog):
         embed.set_image(url="attachment://duo.png")
 
         await msg.edit(content=None, embed=embed, attachments=[file])
-        await award_points(self.bot, ctx.author, 25, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
 
     # -------------------------------------------------------
     # 💥 TRIO COMMAND
     # -------------------------------------------------------
     @commands.command()
-    @commands.cooldown(20, 300, commands.BucketType.user)
+    @commands.cooldown(10, 900, commands.BucketType.user)
     async def trio(self, ctx, *members: discord.Member):
         """Villain trio compatibility check."""
         if len(members) < 2:
