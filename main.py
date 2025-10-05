@@ -67,7 +67,7 @@ async def load_extensions():
         "py.rocket_world_clock",
         "py.rocket_slash_news",
         "py.rocket_montage_challenge",
-        "py.rocket_welcome",
+        #"py.rocket_welcome",
         "py.rocket_press_quest",
         "py.rocket_ship",
         "py.rocket_lightning_round",
