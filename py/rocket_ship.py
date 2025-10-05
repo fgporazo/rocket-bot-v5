@@ -67,13 +67,11 @@ class VillainShip(commands.Cog):
     # 🔮 Utility
     # -------------------------------------------------------
     def chaotic_random(self, low: int, high: int) -> int:
-        """More natural chaotic randomness using triangular distribution."""
         random.seed(os.urandom(8))
         result = random.triangular(low, high, random.uniform(low, high))
         return max(low, min(high, int(result)))
 
     async def merge_avatars(self, urls: list):
-        """Merge avatar URLs horizontally into one image."""
         images = []
         async with aiohttp.ClientSession() as session:
             for url in urls:
@@ -81,7 +79,6 @@ class VillainShip(commands.Cog):
                     img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
                     images.append(img)
 
-        # Resize to consistent height
         height = 128
         resized = [img.resize((int(img.width * height / img.height), height)) for img in images]
         total_width = sum(img.width for img in resized)
@@ -103,7 +100,7 @@ class VillainShip(commands.Cog):
     def calculate_villain_percentage(self, author, members, bot_member):
         all_ids = [m.id for m in members] + [author.id]
 
-        # 🚫 Exclude bots (including self.bot)
+        # If bot involved → automatic 0%
         if bot_member.id in all_ids or any(m.bot for m in members):
             return 0
 
@@ -117,11 +114,10 @@ class VillainShip(commands.Cog):
             return self.chaotic_random(80, 100)
         if author_is_admin:
             return self.chaotic_random(80, 95)
-
         return self.chaotic_random(0, 100)
 
     # -------------------------------------------------------
-    # 🎨 Embed Color System
+    # 🎨 Color System
     # -------------------------------------------------------
     def villain_color_and_emoji(self, percent: int):
         if percent == 0:
@@ -137,29 +133,29 @@ class VillainShip(commands.Cog):
     # 💞 DUO COMMAND
     # -------------------------------------------------------
     @commands.command()
-    @commands.cooldown(1, 600, commands.BucketType.user)
+    @commands.cooldown(10, 300, commands.BucketType.user)
     async def duo(self, ctx, *members: discord.Member):
         """Villain duo compatibility check."""
-        if len(members) == 1:
-            pair = [ctx.author, members[0]]
-        elif len(members) == 2:
-            pair = [members[0], members[1]]
-        else:
-            await ctx.reply("❌ Invalid usage! Use `.duo @user` or `.duo @user1 @user2`.")
-            return
+        if len(members) == 0:
+            return await ctx.reply("❌ Mention someone to form your villain duo!")
+        if len(members) > 2:
+            return await ctx.reply("❌ Too many! Use `.duo @user` or `.duo @user1 @user2`.")
 
-        # 🚫 Prevent self-duo and bot targets
+        # Determine the pair
+        pair = [ctx.author, members[0]] if len(members) == 1 else [members[0], members[1]]
+
+        # Prevent self-duo
         if pair[0].id == pair[1].id:
-            await ctx.reply("💔 You can’t form a villain duo with yourself, silly!")
-            return
+            return await ctx.reply("❌ You can’t duo yourself, villain! Find an accomplice 😈")
+
+        # Prevent bots
         if any(m.bot for m in pair):
-            await ctx.reply("🤖 Villains don’t team up with bots!")
-            return
+            return await ctx.reply("❌ You can’t duo with bots, not even Team Rocket’s HQ systems 🤖")
 
         msg = await ctx.send("⚡ Calculating villain chaos… please wait!")
-
         percent = self.calculate_villain_percentage(ctx.author, pair, ctx.guild.me)
         emoji, color = self.villain_color_and_emoji(percent)
+
         category = "low" if percent < 40 else "medium" if percent < 80 else "high"
         line = random.choice(self.duo_messages[category])
 
@@ -182,42 +178,36 @@ class VillainShip(commands.Cog):
         embed.set_image(url="attachment://duo.png")
 
         await msg.edit(content=None, embed=embed, attachments=[file])
-
-        # ✅ Award points only if not in cooldown
-        bucket = ctx.command._buckets.get_bucket(ctx.message)
-        retry_after = bucket.update_rate_limit()
-        if retry_after is None:
-            await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 2, notify_channel=ctx.channel)
 
     # -------------------------------------------------------
     # 💥 TRIO COMMAND
     # -------------------------------------------------------
     @commands.command()
-    @commands.cooldown(1, 600, commands.BucketType.user)
+    @commands.cooldown(10, 300, commands.BucketType.user)
     async def trio(self, ctx, *members: discord.Member):
         """Villain trio compatibility check."""
         if len(members) < 2:
-            await ctx.reply("❌ Mention at least **2 people** for a trio! Example: `.trio @user1 @user2`")
-            return
-        elif len(members) == 2:
-            trio_members = [ctx.author, members[0], members[1]]
-        elif len(members) == 3:
-            trio_members = list(members)
-        else:
-            await ctx.reply("❌ Invalid usage! You can only mention up to 3 users.")
-            return
+            return await ctx.reply("❌ Mention at least **2 people** for a trio! Example: `.trio @user1 @user2`")
+        if len(members) > 3:
+            return await ctx.reply("❌ Too many villains! Max trio is 3 members.")
 
-        # 🚫 Prevent duplicates, self-doubles, and bots
-        unique_ids = {m.id for m in trio_members}
-        if len(unique_ids) < 3:
-            await ctx.reply("💔 You can’t form a trio with duplicates! No cloning allowed, villain.")
-            return
-        if any(m.bot for m in trio_members):
-            await ctx.reply("🤖 Bots can’t join your villain squad!")
-            return
+        # Allow self once, but not duplicates
+        trio_members = list(dict.fromkeys(members))  # remove duplicates
+        if ctx.author not in trio_members:
+            trio_members.insert(0, ctx.author)
+
+        # Ensure only one self
+        self_count = sum(1 for m in trio_members if m.id == ctx.author.id)
+        if self_count > 1:
+            return await ctx.reply("❌ You can only include yourself **once**, narcissist 😈")
+
+        # Exclude multiple bots
+        bot_count = sum(1 for m in trio_members if m.bot)
+        if bot_count > 1 or all(m.bot for m in trio_members):
+            return await ctx.reply("❌ You can’t include multiple bots in a trio! Even Team Rocket has limits 🤖")
 
         msg = await ctx.send("⚡ Assembling villain squad… chaos imminent!")
-
         percent = self.calculate_villain_percentage(ctx.author, trio_members, ctx.guild.me)
         emoji, color = self.villain_color_and_emoji(percent)
         category = "low" if percent < 40 else "medium" if percent < 80 else "high"
@@ -242,23 +232,18 @@ class VillainShip(commands.Cog):
         embed.set_image(url="attachment://trio.png")
 
         await msg.edit(content=None, embed=embed, attachments=[file])
-
-        # ✅ Award points only if not in cooldown
-        bucket = ctx.command._buckets.get_bucket(ctx.message)
-        retry_after = bucket.update_rate_limit()
-        if retry_after is None:
-            await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 3, notify_channel=ctx.channel)
 
     # -------------------------------------------------------
-    # ⏱ COOLDOWN HANDLER
+    # ⏱ COOLDOWN HANDLER — No points on cooldown
     # -------------------------------------------------------
     @duo.error
     @trio.error
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
-            mins = int(error.retry_after // 60)
-            secs = int(error.retry_after % 60)
-            await ctx.reply(f"⏳ Slow down, villain! Try again in **{mins}m {secs}s**.")
+            await ctx.reply(f"⏳ Slow down, villain! Try again in **{int(error.retry_after)}s**.")
+        else:
+            raise error
 
 
 # -------------------------------------------------------
