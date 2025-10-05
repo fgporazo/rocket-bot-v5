@@ -10,9 +10,6 @@ from helpers import award_points, is_admin  # your helpers
 import re
 from collections import defaultdict
 
-
-active_lb = set()
-
 ADMIN_ROCKET_LIST_CHANNEL_ID = int(os.getenv("ADMIN_ROCKET_LIST_CHANNEL_ID", 0))
 CATCH_CHANNEL_ID = int(os.getenv("CATCH_CHANNEL_ID", 0))
 
@@ -41,6 +38,8 @@ FAIL_LINES = [
 ]
 
 MEDALS = ["🥇", "🥈", "🥉"]  # Top 3 medals
+# Global lock to ensure only one user can run the leaderboard at a time
+pokecatch_lock = asyncio.Lock()
 # -----------------------------
 # Custom admin check decorator
 # -----------------------------
@@ -189,7 +188,7 @@ class RocketCatch(commands.Cog):
         self.pokemon_queue = []
         self.user_attempts = {}  # {user_id: {"count": int, "last": datetime}}
         self.cooldowns = {}  # {user_id: datetime}
-
+        self._lb_running = False
     async def load_second_latest_json_from_channel(self):
         """Fetch JSON from the second-most-recent message with a JSON attachment."""
         channel = self.bot.get_channel(ADMIN_ROCKET_LIST_CHANNEL_ID)
@@ -269,115 +268,93 @@ class RocketCatch(commands.Cog):
         else:
             await interaction.response.send_message(f"⚠️ Error: {error}", ephemeral=True)
 
-    @commands.command(name="pokecatch")
-    async def pokecatch_lb(self, ctx, arg=None):
-        logging.info(f"[DEBUG] pokecatch_lb called in channel {ctx.channel.id} with arg={arg}")
 
-        if arg != "lb":
-            logging.info("[DEBUG] Argument is not 'lb', exiting command")
-            return
 
-        # Prevent duplicate triggers
-        if ctx.channel.id in active_lb:
-            logging.info("[DEBUG] Leaderboard already being calculated in this channel")
+    # --- command group ---
+    @commands.group(name="pc", invoke_without_command=True)
+    async def pc_group(self, ctx):
+        """Pokémon Catch group commands"""
+        await ctx.send("🎯 Use `!pc lb` to see the Pokémon Catch leaderboard!")
+
+    @pc_group.command(name="lb", aliases=["leaderboard"])
+    async def pc_lb(self, ctx):
+        """📊 Show Pokémon Catch Leaderboard"""
+        if self._lb_running:
             await ctx.send("⚠️ Leaderboard is already being calculated, please wait...")
             return
-        active_lb.add(ctx.channel.id)
-        logging.info("[DEBUG] Added channel to active_lb set")
 
+        self._lb_running = True
         try:
+            CATCH_CHANNEL_ID = int(os.getenv("CATCH_CHANNEL_ID", 0))
             channel = self.bot.get_channel(CATCH_CHANNEL_ID)
-            logging.info(f"[DEBUG] Fetching catch channel with ID {CATCH_CHANNEL_ID}: {channel}")
             if not channel:
                 await ctx.send("⚠️ Catch channel not found.")
-                logging.warning("[DEBUG] Catch channel not found")
                 return
 
+            # Temporary calculating message
+            temp_msg = await ctx.send("⏳ Calculating Pokémon Catch Leaderboard...")
+
+            from collections import defaultdict
+            import re
             counts = defaultdict(int)
             pattern = re.compile(r"💎\s*(\S+)")
-            logging.info("[DEBUG] Starting scan of last 500 messages for gem mentions")
 
-            # Scan last 500 messages for gem mentions
             async for msg in channel.history(limit=500):
                 matches = pattern.findall(msg.content)
-                if matches:
-                    logging.info(f"[DEBUG] Found matches in message {msg.id}: {matches}")
                 for name in matches:
                     counts[name] += 1
 
-            logging.info(f"[DEBUG] Total counts collected: {dict(counts)}")
             if not counts:
-                await ctx.send("⚠️ No gem messages found in the last 500 messages.")
-                logging.warning("[DEBUG] No gem messages found")
+                await temp_msg.edit(content="⚠️ No gem messages found in the last 500 messages.")
                 return
 
-            guild = ctx.guild
-            logging.info(f"[DEBUG] Using guild: {guild.name} ({guild.id})")
-            legendary_role = discord.utils.get(guild.roles, name="Legendary Catcher 🎯")
-            logging.info(f"[DEBUG] Legendary role found: {legendary_role}")
-
-            # Sort leaderboard
             sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-            logging.info(f"[DEBUG] Sorted leaderboard: {sorted_counts}")
+            medals = ["🥇", "🥈", "🥉"]
 
-            # Build leaderboard text
-            leaderboard_lines = []
-            for idx, (name, score) in enumerate(sorted_counts):
-                medal = MEDALS[idx] if idx < len(MEDALS) else ""
-                leaderboard_lines.append(f"{medal} {name} - {score} 🎯")
+            leaderboard_lines = [
+                f"{medals[i] if i < 3 else '🔹'} {name} — {score} 🎯"
+                for i, (name, score) in enumerate(sorted_counts)
+            ]
             leaderboard_text = "\n".join(leaderboard_lines)
-            logging.info(f"[DEBUG] Leaderboard text:\n{leaderboard_text}")
 
-            # Find top member
+            guild = ctx.guild
+            legendary_role = discord.utils.get(guild.roles, name="Legendary Catcher 🎯")
+
             top_name, top_score = sorted_counts[0]
             top_member = next(
                 (m for m in guild.members if
                  m.display_name.lower() == top_name.lower() or m.name.lower() == top_name.lower()),
                 None
             )
-            logging.info(f"[DEBUG] Top member: {top_member}")
 
-            # Remove role from everyone except top_member
             if legendary_role:
                 for member in legendary_role.members:
                     if member != top_member:
-                        try:
-                            await member.remove_roles(legendary_role)
-                            logging.info(f"[DEBUG] Removed legendary role from {member}")
-                        except discord.Forbidden:
-                            logging.warning(f"[DEBUG] Cannot remove role from {member}, forbidden")
+                        await member.remove_roles(legendary_role, reason="Lost top spot")
+                if top_member:
+                    await top_member.add_roles(legendary_role, reason="New top catcher")
 
-            # Assign role to top member
-            if top_member and legendary_role:
-                try:
-                    await top_member.add_roles(legendary_role)
-                    logging.info(f"[DEBUG] Assigned legendary role to {top_member}")
-                except discord.Forbidden:
-                    await ctx.send("I don't have permission to assign the role.")
-                    logging.warning(f"[DEBUG] Cannot assign legendary role to {top_member}, forbidden")
-
-            # Congratulatory message
-            congrats_message = (
-                f"🎉 Wow {top_member.mention}! You dominated the Pokémon catch! {legendary_role.mention if legendary_role else ''}"
-                if top_member else
-                f"💥 Boom! {top_name} is the ultimate catcher! {legendary_role.mention if legendary_role else ''}"
+            congrats = (
+                f"🎉 {top_member.mention if top_member else top_name} is the **Top Pokémon Catcher!** "
+                f"{legendary_role.mention if legendary_role else ''}"
             )
-            logging.info(f"[DEBUG] Congratulatory message: {congrats_message}")
 
-            # Send leaderboard embed
             embed = discord.Embed(
                 title="🏆 Pokémon Catch Leaderboard",
-                description=f"{congrats_message}\n\n{leaderboard_text}",
+                description=f"{congrats}\n\n{leaderboard_text}",
                 color=discord.Color.gold()
             )
-            embed.set_footer(text="Be the best Pokémon catcher!")
-            logging.info("[DEBUG] Sending embed")
-            await ctx.send(embed=embed)
-            logging.info("[DEBUG] Embed sent successfully")
+            embed.set_footer(text="💫 Congratulations to all trainers — keep catching to claim the top spot!")
 
+            await temp_msg.delete()  # 🧹 Remove the "Calculating..." message
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            await ctx.send(f"⚠️ An error occurred while generating the leaderboard: `{e}`")
+            raise
         finally:
-            # Remove lock so next call can run
-            active_lb.remove(ctx.channel.id)
-            logging.info("[DEBUG] Removed channel from active_lb set")
+            self._lb_running = False
+
+
 async def setup(bot):
     await bot.add_cog(RocketCatch(bot))
