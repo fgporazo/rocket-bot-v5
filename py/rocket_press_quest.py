@@ -123,7 +123,7 @@ class PressQuest(commands.Cog):
                 await award_points(self.bot, ctx.author, 15, notify_channel=ctx.channel)
                 await update_daily_quest(self.bot, ctx.author, "d")
                 await ctx.send(
-                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **50 💎 diamonds!**")
+                    f"🎉 {ctx.author.mention}, you completed the full Press Quest and earned **15 💎!**")
             elif answers:
                 await ctx.send(f"⚠️ {ctx.author.mention}, you missed some questions — no bonus this time!")
 
