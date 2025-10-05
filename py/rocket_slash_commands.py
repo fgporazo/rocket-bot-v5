@@ -27,7 +27,7 @@ class CommandButton(discord.ui.Button):
         self.bot = bot
         self.channel_ids = channel_ids or []
         self.dm_notify = dm_notify
-        self.cooldown_seconds = 300  # 5 minutes
+        self.cooldown_seconds = 1800  # 5 minutes
 
     async def callback(self, interaction: discord.Interaction):
         user_id = interaction.user.id
@@ -43,7 +43,7 @@ class CommandButton(discord.ui.Button):
         CLICK_TRACKER[user_id][custom_id] = timestamps
         if len(timestamps) >= 3:
             remaining = int(self.cooldown_seconds - (now - timestamps[0]))
-            minutes, seconds = divmod(remaining, 60)
+            minutes, seconds = divmod(remaining, 60)  # Use 60, not 1800
             lines = [
                 f"😼 Meowth: Nyehehe! Slow down, twerp! Wait {minutes}m {seconds}s!",
                 f"💋 Jessie: Patience, twerp! Give it {minutes}m {seconds}s!",
@@ -51,6 +51,7 @@ class CommandButton(discord.ui.Button):
             ]
             await interaction.response.send_message(random.choice(lines), ephemeral=True)
             return
+
         timestamps.append(now)
         CLICK_TRACKER[user_id][custom_id] = timestamps
 
