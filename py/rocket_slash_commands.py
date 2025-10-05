@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ui import View
 from helpers import is_admin, award_points
-
+import re
 # ----------------- Button Styles ------------
 STYLE_MAP = {
     "success": discord.ButtonStyle.success,
@@ -17,7 +17,7 @@ STYLE_MAP = {
 
 # ----------------- Cooldown -----------------
 CLICK_TRACKER: dict[int, dict[str, list[float]]] = {}
-
+LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID", 0))
 # ----------------- Command Button -----------------
 class CommandButton(discord.ui.Button):
     def __init__(self, label: str, command: str, style: discord.ButtonStyle, bot: commands.Bot,
@@ -211,6 +211,78 @@ class RocketSlash(commands.Cog):
             f"✅ {abs(gems):,} gems {action} {member.mention}!",
             ephemeral=False
         )
+
+    # ----------------- Rocket Elites -----------------
+    @app_commands.command(
+        name="rocket-elites",
+        description="Announce the top 10 E-Games scorers 🚀"
+    )
+    async def rocket_elites(self, interaction: discord.Interaction):
+        try:
+            # Make it a public announcement
+            await interaction.response.defer(ephemeral=False)
+
+            channel = self.bot.get_channel(LEADERBOARD_CHANNEL_ID)
+            if not channel:
+                return await interaction.followup.send("⚠️ Leaderboard channel not found.")
+
+            # --- Fetch latest message ---
+            msg = None
+            async for m in channel.history(limit=5, oldest_first=False):
+                if m.content:
+                    msg = m
+                    break
+
+            if not msg:
+                return await interaction.followup.send("⚠️ No leaderboard message found.")
+
+            # --- Parse leaderboard ---
+            leaderboard = []
+            for line in msg.content.splitlines():
+                parts = [p.strip() for p in line.split("-")]
+                if len(parts) < 3:
+                    continue
+                name_str, uid_str, points_str = parts[-3], parts[-2], parts[-1]
+                try:
+                    uid = int(re.sub(r"\D", "", uid_str))
+                    points = int(re.sub(r"\D", "", points_str))
+                except ValueError:
+                    continue
+                leaderboard.append((name_str, uid, points))
+
+            if not leaderboard:
+                return await interaction.followup.send("⚠️ Leaderboard is empty or malformed.")
+
+            # --- Sort by points descending and keep top 10 ---
+            leaderboard.sort(key=lambda x: x[2], reverse=True)
+            leaderboard = leaderboard[:10]
+
+            guild = interaction.guild
+            lines = []
+
+            # Add title
+            lines.append("# 🎖️ TOP 🔟 ROCKET ELITES 🎖️\n")
+
+            for idx, (name, uid, points) in enumerate(leaderboard):
+                try:
+                    member = guild.get_member(uid) if guild else None
+                    mention = member.mention if member else name
+                except Exception:
+                    mention = name
+
+                medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else "🏅"
+                number_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][idx]
+
+                # Add ## only to top 1
+                prefix = "## " if idx == 0 else ""
+                lines.append(f"{prefix}{number_emoji}  {medal} {mention} — 💎 {points}")
+
+            final_message = "\n".join(lines)
+            await interaction.followup.send(final_message)
+
+        except Exception as e:
+            print("🚨 Rocket-Elites Error:", e)
+            await interaction.followup.send(f"⚠️ An error occurred:\n```{e}```")
 
 
 # ----------------- Cog Setup -----------------
