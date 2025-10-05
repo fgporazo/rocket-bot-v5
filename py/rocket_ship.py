@@ -103,7 +103,7 @@ class VillainShip(commands.Cog):
     def calculate_villain_percentage(self, author, members, bot_member):
         all_ids = [m.id for m in members] + [author.id]
 
-        # If bot involved → automatic 0%
+        # 🚫 Exclude bots (including self.bot)
         if bot_member.id in all_ids or any(m.bot for m in members):
             return 0
 
@@ -137,14 +137,9 @@ class VillainShip(commands.Cog):
     # 💞 DUO COMMAND
     # -------------------------------------------------------
     @commands.command()
-    @commands.cooldown(10, 900, commands.BucketType.user)
+    @commands.cooldown(1, 600, commands.BucketType.user)
     async def duo(self, ctx, *members: discord.Member):
         """Villain duo compatibility check."""
-        try:
-            ctx.command.reset_cooldown(ctx)  # ensure cooldown resets if errored before awarding
-        except:
-            pass
-
         if len(members) == 1:
             pair = [ctx.author, members[0]]
         elif len(members) == 2:
@@ -153,9 +148,12 @@ class VillainShip(commands.Cog):
             await ctx.reply("❌ Invalid usage! Use `.duo @user` or `.duo @user1 @user2`.")
             return
 
-        # 🚫 Prevent self-duo
+        # 🚫 Prevent self-duo and bot targets
         if pair[0].id == pair[1].id:
             await ctx.reply("💔 You can’t form a villain duo with yourself, silly!")
+            return
+        if any(m.bot for m in pair):
+            await ctx.reply("🤖 Villains don’t team up with bots!")
             return
 
         msg = await ctx.send("⚡ Calculating villain chaos… please wait!")
@@ -185,7 +183,7 @@ class VillainShip(commands.Cog):
 
         await msg.edit(content=None, embed=embed, attachments=[file])
 
-        # ✅ Award only if not in cooldown
+        # ✅ Award points only if not in cooldown
         bucket = ctx.command._buckets.get_bucket(ctx.message)
         retry_after = bucket.update_rate_limit()
         if retry_after is None:
@@ -195,14 +193,9 @@ class VillainShip(commands.Cog):
     # 💥 TRIO COMMAND
     # -------------------------------------------------------
     @commands.command()
-    @commands.cooldown(10, 900, commands.BucketType.user)
+    @commands.cooldown(1, 600, commands.BucketType.user)
     async def trio(self, ctx, *members: discord.Member):
         """Villain trio compatibility check."""
-        try:
-            ctx.command.reset_cooldown(ctx)
-        except:
-            pass
-
         if len(members) < 2:
             await ctx.reply("❌ Mention at least **2 people** for a trio! Example: `.trio @user1 @user2`")
             return
@@ -214,10 +207,13 @@ class VillainShip(commands.Cog):
             await ctx.reply("❌ Invalid usage! You can only mention up to 3 users.")
             return
 
-        # 🚫 Prevent duplicate users (including self-doubles)
+        # 🚫 Prevent duplicates, self-doubles, and bots
         unique_ids = {m.id for m in trio_members}
         if len(unique_ids) < 3:
             await ctx.reply("💔 You can’t form a trio with duplicates! No cloning allowed, villain.")
+            return
+        if any(m.bot for m in trio_members):
+            await ctx.reply("🤖 Bots can’t join your villain squad!")
             return
 
         msg = await ctx.send("⚡ Assembling villain squad… chaos imminent!")
@@ -234,11 +230,11 @@ class VillainShip(commands.Cog):
         embed = discord.Embed(
             title=f"{emoji} Villain Trio Compatibility — {percent}%",
             description=(
-                    " ⚡ ".join(m.mention for m in trio_members)
-                    + f"\n**Villain Level:** {percent}%\n\n"
-                      f"🤡 Below 40% → Clumsy villains\n"
-                      f"😼 40–79% → Functional chaos\n"
-                      f"😈 80–100% → Pure evil excellence\n\n"
+                " ⚡ ".join(m.mention for m in trio_members)
+                + f"\n**Villain Level:** {percent}%\n\n"
+                  f"🤡 Below 40% → Clumsy villains\n"
+                  f"😼 40–79% → Functional chaos\n"
+                  f"😈 80–100% → Pure evil excellence\n\n"
             ),
             color=color,
         )
@@ -247,7 +243,7 @@ class VillainShip(commands.Cog):
 
         await msg.edit(content=None, embed=embed, attachments=[file])
 
-        # ✅ Award only if not in cooldown
+        # ✅ Award points only if not in cooldown
         bucket = ctx.command._buckets.get_bucket(ctx.message)
         retry_after = bucket.update_rate_limit()
         if retry_after is None:
@@ -260,7 +256,9 @@ class VillainShip(commands.Cog):
     @trio.error
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"⏳ Slow down, villain! Try again in **{int(error.retry_after)}s**.")
+            mins = int(error.retry_after // 60)
+            secs = int(error.retry_after % 60)
+            await ctx.reply(f"⏳ Slow down, villain! Try again in **{mins}m {secs}s**.")
 
 
 # -------------------------------------------------------
