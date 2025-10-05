@@ -571,22 +571,38 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "🔥 Who’s the victim? Use `.tr roast @someone!`")
         if member.bot:
             return await safe_send(ctx, "🤖 You can’t roast a bot, silly human.")
+    
+        # ✅ Allow self-roasting
+        if member == ctx.author:
+            template = random.choice([
+                "🔥 {author} just roasted themselves — self-awareness level: over 9000!",
+                "💀 {author} looked in the mirror and said: ‘That’s enough pain for today.’",
+                "😂 {author} tried to roast someone but ended up roasting themselves!",
+            ])
+            await ctx.send(template.format(author=ctx.author.mention))
+            return
+    
+        # ⚡ Admin protection
         if is_admin(member):
             await ctx.send(random.choice(self.thunderbolt_protected_lines).format(
                 target=member.mention, name=ctx.author.mention
             ))
             return
+    
+        # 🔥 Pick unique roast line
         if not self.roast_queue:
             self.roast_queue = self.roast_lines.copy()
             random.shuffle(self.roast_queue)
         template = self.roast_queue.pop()
+    
         await ctx.send(template.format(author=ctx.author.mention, target=member.mention))
-
-        # Only award if not on cooldown
+    
+        # 🏆 Award points only if not on cooldown
         if not ctx.command.is_on_cooldown(ctx):
             await update_daily_quest(self.bot, ctx.author, "b")
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
-
+    
+    
     @tr.command(name="scream", description="Scream to your enemy 📢")
     @commands.cooldown(5, 60, commands.BucketType.user)
     async def scream(self, ctx, member: Optional[discord.Member] = None):
@@ -594,6 +610,17 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "📢 Who’s screaming? Use `.tr scream @user`")
         if member.bot:
             return await safe_send(ctx, "🤖 Bots don’t care about your screams!")
+    
+        # ✅ Allow self-scream
+        if member == ctx.author:
+            template = random.choice([
+                "😱 {author} screamed into the void… and the void screamed back.",
+                "💀 {author} screamed at themselves — that’s one way to self-motivate!",
+                "📢 {author} yelled so loud they scared their own reflection!",
+            ])
+            await ctx.send(template.format(author=ctx.author.mention))
+            return
+    
         available = [line for line in self.scream_queue if line != self.last_scream_template]
         if not available:
             self.scream_queue = self.scream_lines.copy()
@@ -603,10 +630,11 @@ class RocketDate(commands.Cog):
         self.last_scream_template = chosen
         self.scream_queue.remove(chosen)
         await ctx.send(chosen.format(author=ctx.author.mention, target=member.mention))
-
+    
         if not ctx.command.is_on_cooldown(ctx):
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
-
+    
+    
     @tr.command(name="drama", description="Stirr some drama 🎭")
     @commands.cooldown(5, 60, commands.BucketType.user)
     async def drama(self, ctx, member: Optional[discord.Member] = None):
@@ -614,6 +642,17 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "🎭 Who’s stirring the drama? Use `.tr drama @user`")
         if member.bot:
             return await safe_send(ctx, "🤖 You can’t cause drama with bots!")
+    
+        # ✅ Allow self-drama
+        if member == ctx.author:
+            template = random.choice([
+                "🎭 {author} started drama with themselves — now that’s a one-person soap opera!",
+                "💅 {author} said ‘fine’ to themselves and hasn’t spoken since.",
+                "😤 {author} argued in the mirror and lost… twice.",
+            ])
+            await ctx.send(template.format(author=ctx.author.mention))
+            return
+    
         available = [line for line in self.drama_queue if line != self.last_drama_template]
         if not available:
             self.drama_queue = self.drama_lines.copy()
@@ -623,10 +662,11 @@ class RocketDate(commands.Cog):
         self.last_drama_template = chosen
         self.drama_queue.remove(chosen)
         await ctx.send(chosen.format(author=ctx.author.mention, target=member.mention))
-
+    
         if not ctx.command.is_on_cooldown(ctx):
             await update_daily_quest(self.bot, ctx.author, "c")
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
+
 
     @tr.command(name="thunderbolt", description="Zap someone ⚡")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -635,17 +675,30 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "⚡ Who are we zapping? Use `.tr thunderbolt @user`")
         if member.bot:
             return await safe_send(ctx, "🤖 Bots are immune to your electricity!")
+    
+        # ✅ Allow self-zap
+        if member == ctx.author:
+            template = random.choice([
+                "⚡ {author} accidentally zapped themselves! That’s what curiosity gets you.",
+                "😵 {author} just self-thunderbolted — someone call Nurse Joy!",
+                "💥 {author} thought they could handle the voltage… they couldn’t.",
+            ])
+            await ctx.send(template.format(author=ctx.author.mention))
+            return
+    
+        # ⚡ Admin protection
         if is_admin(member):
             await ctx.send(random.choice(self.thunderbolt_protected_lines).format(
                 target=member.mention, name=ctx.author.mention
             ))
             return
+    
         if not self.thunderbolt_queue:
             self.thunderbolt_queue = self.thunderbolt_lines.copy()
             random.shuffle(self.thunderbolt_queue)
         template = self.thunderbolt_queue.pop()
         await ctx.send(template.format(author=ctx.author.mention, target=member.mention))
-
+    
         if not ctx.command.is_on_cooldown(ctx):
             await update_daily_quest(self.bot, ctx.author, "a")
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
