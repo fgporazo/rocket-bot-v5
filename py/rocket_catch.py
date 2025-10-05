@@ -343,7 +343,7 @@ class RocketCatch(commands.Cog):
             # --- ONLY ONE EMBED ---
             embed = discord.Embed(
                 title="🏆 Pokémon Catch Leaderboard",
-                description=f"{congrats_message}\n\n**Leaderboard:**\n{leaderboard_text}",
+                description=f"{congrats_message}\n\n{leaderboard_text}",
                 color=discord.Color.gold()
             )
             embed.set_footer(text="Be the best Pokémon catcher!")
