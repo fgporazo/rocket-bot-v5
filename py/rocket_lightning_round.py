@@ -6,7 +6,7 @@ import os
 import re
 from collections import defaultdict
 from helpers import award_points
-
+import random
 
 class LightningRound(commands.Cog):
     """Team Rocket Lightning Round Quiz"""
@@ -162,7 +162,6 @@ class LightningRound(commands.Cog):
                 await award_points(self.bot, member, 15, notify_channel=ctx.channel)
                 reward_lines.append(f"🎉 <@{uid}> — +50 💎")
 
-
         if reward_lines:
             await ctx.send(embed=discord.Embed(
                 title="💎 Lightning Round Rewards",
@@ -206,53 +205,14 @@ class LightningRound(commands.Cog):
 
     @lr.command(name="lb", help="Show Lightning Round leaderboard")
     async def lr_leaderboard(self, ctx: commands.Context):
-        """Command to display sorted leaderboard"""
-        admin_channel = self.bot.get_channel(self.admin_channel_id)
-        if not admin_channel:
-            await ctx.send("⚠️ Leaderboard not configured.")
-            return
-
-        # Fetch leaderboard message (3rd message in admin channel)
-        msgs = [msg async for msg in admin_channel.history(limit=3, oldest_first=False)]
-        msgs.reverse()
-        leaderboard_msg = msgs[2] if len(msgs) >= 3 else None
-
-        lb_entries = []
-        if leaderboard_msg and leaderboard_msg.content.strip():
-            parsed_scores = []
-            for line in leaderboard_msg.content.splitlines():
-                try:
-                    name_id, score = line.split("|")
-                    name, uid = name_id.rsplit("-", 1)
-                    parsed_scores.append((name.strip(), int(uid.strip()), int(score.strip())))
-                except:
-                    continue
-
-            # ✅ Sort by score descending
-            parsed_scores.sort(key=lambda x: x[2], reverse=True)
-
-            for i, (name, uid, score) in enumerate(parsed_scores):
-                medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i + 1}️⃣"
-                lb_entries.append(f"{medal} {name} — {score} ⭐")
-        else:
-            lb_entries.append("No scores yet. Type `.lr start` to play!")
-
-        embed = discord.Embed(
-            title="🏆 Lightning Round Leaderboard",
-            description="Smartest Pokécandidates in Rocketverse\n\n" + "\n".join(lb_entries),
-            color=discord.Color.gold()
-        )
-        embed.set_footer(text="Are you smarter than your Pokécandidate? ⭐")
-        await ctx.send(embed=embed)
+        await self.show_leaderboard(ctx)
 
     # ------------------------------
     async def update_leaderboard(self, admin_channel):
-        # Fetch leaderboard message (3rd message)
         msgs = [msg async for msg in admin_channel.history(limit=3, oldest_first=False)]
         msgs.reverse()
         leaderboard_msg = msgs[2] if len(msgs) >= 3 else None
 
-        # Load existing leaderboard
         existing_scores = {}
         if leaderboard_msg and leaderboard_msg.content.strip():
             for line in leaderboard_msg.content.splitlines():
@@ -260,17 +220,15 @@ class LightningRound(commands.Cog):
                     name_id, score = line.split("|")
                     name, uid = name_id.rsplit("-", 1)
                     existing_scores[int(uid.strip())] = int(score.strip())
-                except:
-                    continue
+                except Exception as e:
+                    print(f"[ERROR] Failed to parse line '{line}': {e}")
 
-        # Update scores
         for uid, score in self.round_scores.items():
             if uid in existing_scores:
                 existing_scores[uid] += score
             else:
                 existing_scores[uid] = score
 
-        # Prepare leaderboard text
         lb_lines = []
         for uid, score in existing_scores.items():
             member = admin_channel.guild.get_member(uid)
@@ -278,7 +236,6 @@ class LightningRound(commands.Cog):
             lb_lines.append(f"{name} - {uid} | {score}")
         lb_text = "\n".join(lb_lines) if lb_lines else ""
 
-        # Edit or send leaderboard message
         if leaderboard_msg:
             await leaderboard_msg.edit(content=lb_text)
         else:
@@ -287,30 +244,115 @@ class LightningRound(commands.Cog):
     async def show_leaderboard(self, ctx, admin_channel=None):
         if not admin_channel:
             admin_channel = self.bot.get_channel(self.admin_channel_id)
-        # Fetch leaderboard message
+
         msgs = [msg async for msg in admin_channel.history(limit=3, oldest_first=False)]
         msgs.reverse()
         leaderboard_msg = msgs[2] if len(msgs) >= 3 else None
 
         lb_entries = []
+        top_user_id = None
+        top_member = None
+        parsed_scores = []
+
         if leaderboard_msg and leaderboard_msg.content.strip():
-            for i, line in enumerate(leaderboard_msg.content.splitlines()):
+            for line in leaderboard_msg.content.splitlines():
                 try:
                     name_id, score = line.split("|")
                     name, uid = name_id.rsplit("-", 1)
-                    medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}️⃣"
-                    lb_entries.append(f"{medal} {name.strip()} — {score.strip()} ⭐")
-                except:
-                    continue
+                    parsed_scores.append((name.strip(), int(uid.strip()), int(score.strip())))
+                except Exception as e:
+                    print(f"[ERROR] Failed to parse line '{line}': {e}")
+
+            parsed_scores.sort(key=lambda x: x[2], reverse=True)
+
+            for i, (name, uid, score) in enumerate(parsed_scores):
+                medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i + 1}️⃣"
+                lb_entries.append(f"{medal} {name} — {score} ⭐")
+
+            if parsed_scores:
+                top_user_id = parsed_scores[0][1]
+
+                top_member = ctx.guild.get_member(top_user_id)
+                if not top_member:
+                    try:
+                        top_member = await ctx.guild.fetch_member(top_user_id)
+                        print(f"[INFO] Fetched top member {top_member.display_name} from API")
+                    except discord.NotFound:
+                        print(f"[ERROR] Top member with ID {top_user_id} not found in guild")
+                        top_member = None
+                    except Exception as e:
+                        print(f"[ERROR] Unexpected error fetching top member {top_user_id}: {e}")
+                        top_member = None
         else:
             lb_entries.append("No scores yet. Type `.lr start` to play!")
+
+        # ---------------- Role Assignment with Debug ----------------
+        role_name = "Lightning Ace ⚡"
+        lr_role = discord.utils.get(ctx.guild.roles, name=role_name)
+
+        print("---- DEBUG LIGHTNING ROUND ----")
+        print("Top member ID:", top_user_id)
+        print("Top member object:", top_member)
+        print("All guild roles:", [r.name for r in ctx.guild.roles])
+        bot_member = ctx.guild.get_member(self.bot.user.id)
+        print("Bot top role:", bot_member.top_role.name if bot_member else "None")
+
+        if not lr_role:
+            print(f"[ERROR] Role '{role_name}' does not exist! Cannot assign Lightning Ace.")
+        else:
+            for member in ctx.guild.members:
+                if lr_role in member.roles:
+                    try:
+                        await member.remove_roles(lr_role, reason="Reset Lightning Ace role")
+                        print(f"[INFO] Removed role '{role_name}' from {member.display_name}")
+                    except discord.Forbidden:
+                        print(f"[ERROR] Cannot remove role from {member.display_name}, check bot hierarchy or permissions.")
+                    except Exception as e:
+                        print(f"[ERROR] Unexpected error removing role from {member.display_name}: {e}")
+
+            if top_member:
+                try:
+                    await top_member.add_roles(lr_role, reason="Top scorer Lightning Round")
+                    print(f"[INFO] Assigned role '{role_name}' to {top_member.display_name}")
+                except discord.Forbidden:
+                    print(f"[ERROR] Cannot assign role to {top_member.display_name}, check bot hierarchy or permissions.")
+                except Exception as e:
+                    print(f"[ERROR] Unexpected error assigning role to {top_member.display_name}: {e}")
+            else:
+                print("[INFO] No top member found to assign the role.")
 
         embed = discord.Embed(
             title="🏆 Lightning Round Leaderboard",
             description="Smartest Pokécandidates in Rocketverse\n\n" + "\n".join(lb_entries),
-            color=discord.Color.gold()
+            color=discord.Color(int("FFB380", 16))
         )
         embed.set_footer(text="Are you smarter than your Pokécandidate? ⭐")
+
+        # Lightning Ace announcement
+        lr_role = discord.utils.get(ctx.guild.roles, name="Lightning Ace ⚡")
+
+        if top_member:
+            if lr_role:
+                messages = [
+                    f"\n🏆 All hail {top_member.mention}! You’ve struck first and earned the {lr_role.mention} crown!",
+                    f"\n🏆 Zap! {top_member.mention} is now the {lr_role.mention} — top scorer of the round!",
+                    f"\n🏆 Lightning strikes! {top_member.mention} claims the {lr_role.mention} role!",
+                    f"\n🏆 Watch out! {top_member.mention} just earned the {lr_role.mention} title!",
+                    f"\n🏆 Lightning strikes! {top_member.mention} dominates the leaderboard and is the new {lr_role.mention}!",
+                    f"\n🏆 Top of the round goes to {top_member.mention} — {lr_role.mention} achieved!"
+                ]
+            else:
+                # fallback if role doesn't exist
+                messages = [
+                    f"🏆 All hail {top_member.mention}! You’ve struck first and earned the Lightning Ace crown!",
+                ]
+
+            embed.add_field(
+                name="",
+                value=random.choice(messages),
+                inline=False
+            )
+
         await ctx.send(embed=embed)
 
 
