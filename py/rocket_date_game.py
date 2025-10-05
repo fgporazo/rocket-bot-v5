@@ -14,7 +14,7 @@ from helpers import (
     safe_send, TextPaginator, EmbedPaginator,
     count_sent_today, insert_record, get_pending_between, update_status,
     fetch_incoming_history, load_json_file,award_points,
-    update_daily_quest, DAILY_QUEST_IDS, DAILY_QUEST_CHANNEL_ID
+    update_daily_quest, DAILY_QUEST_IDS, DAILY_QUEST_CHANNEL_ID,compute_points,reset_heartthrob_role
 )
 
 # Optional constants
@@ -57,7 +57,13 @@ class RocketDate(commands.Cog):
     @commands.group(name="tr", invoke_without_command=True)
     async def tr(self, ctx):
         """📖 Team Rocket Fun & Games Guide"""
-        commands_list = [f"`.tr {c.name}` - {c.description or 'No description'}" for c in self.tr.commands]
+        # Filter commands by name
+        allowed = ["list", "date", "dateyes","dateno","history", "leaderboard", "roast","scream","drama","thunderbolt"]  # commands you want to show
+        commands_list = [
+            f"`.tr {c.name}` - {c.description or 'No description'}"
+            for c in self.tr.commands
+            if c.name in allowed
+        ]
         commands_list.sort()
         help_text = "\n".join(commands_list)
         await safe_send(ctx, f"📖 **Team Rocket E-Date & Fun Commands Guide**\n{help_text}")
@@ -242,7 +248,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="🚀 Love is a battlefield, choose wisely.")
         await safe_send(ctx, embed=embed)
         # Award +1 point for using this command
-        await award_points(self.bot, ctx.author, 50,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5,notify_channel=ctx.channel)
     # -------------------- ACCEPT --------------------
     @tr.command(name="dateyes", description="Accept an e-date request from other PokeCandidates 💖")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -271,8 +277,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="💘 Team Rocket spreads love and chaos!")
         await safe_send(ctx, embed=embed)
 
-        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
-
+        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
     # -------------------- REJECT --------------------
     @tr.command(name="dateno", description="Reject an e-date request from a user 💔 (optionally add a reason)")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -303,7 +308,7 @@ class RocketDate(commands.Cog):
         )
         embed.set_footer(text="😼 Don’t break too many hearts, Rocket!")
         await safe_send(ctx, embed=embed)
-        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 3, notify_channel=ctx.channel)
     # -------------------- HISTORY --------------------
     @tr.command(name="history", description="💌 Show e-date history")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -352,96 +357,211 @@ class RocketDate(commands.Cog):
 
         paginator = EmbedPaginator(embeds, ctx.author)
         await paginator.start(ctx)
+    # -------------------- DATE LEADERBOARD --------------------
+    @tr.command(name="datelb", help="🏆 Show the e-date leaderboard")
+    async def date_leaderboard(self, ctx):
+        HEARTTHROB_ROLE_NAME = "Heartthrob 💘"
 
-    # -------------------- LEADERBOARD --------------------
-    @tr.command(name="leaderboard", aliases=["lb", "top"], description="See the Team Rocket E-Games Leaderboard 🚀")
+        # --- Compute dynamic points ---
+        user_points: dict[int, int] = compute_points(ctx.guild)
+        if not user_points:
+            return await safe_send(ctx, "❌ No e-date activity recorded yet!")
+
+        # --- Sort by points descending ---
+        sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)
+
+        # --- Build leaderboard entries ---
+        lb_entries = []
+        for i, (uid, pts) in enumerate(sorted_users, start=1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}️⃣"
+            member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+            name = member.display_name if member else str(uid)
+            lb_entries.append(f"{medal} {name} — {pts} 💘")
+
+        # --- Heartthrob role assignment ---
+        top_member_id = sorted_users[0][0]  # top scorer
+        role = await reset_heartthrob_role(ctx.guild, HEARTTHROB_ROLE_NAME, top_member_id)
+
+        top_member = ctx.guild.get_member(top_member_id) or await ctx.guild.fetch_member(top_member_id)
+        if top_member:
+            if not role:
+                role = await ctx.guild.create_role(
+                    name=HEARTTHROB_ROLE_NAME,
+                    colour=discord.Colour.red(),
+                    reason="Top e-date scorer"
+                )
+            if role not in top_member.roles:
+                await top_member.add_roles(role, reason="Top e-date scorer")
+
+        # --- Random Heartthrob announcement inside embed ---
+        messages = [
+            f"💘 {top_member.mention} has stolen everyone’s heart and is now {role.mention}!",
+            f"🏆 All hail {top_member.mention}! {role.mention} strikes again!",
+            f"❤️ Look at {top_member.mention} getting all the love! {role.mention} status unlocked!",
+            f"💝 {top_member.mention} just reached legendary {role.mention} level!",
+            f"💌 Warning: {top_member.mention} is officially too charming—meet {role.mention}!"
+        ]
+        chosen_msg = random.choice(messages)
+
+        # --- Create paginated embed ---
+        embeds = [
+            discord.Embed(
+                title="🏆 E-Date Leaderboard",
+                description="\n".join(lb_entries[i:i + 10]),
+                color=discord.Color.red()
+            )
+            for i in range(0, len(lb_entries), 10)
+        ]
+
+        # --- Add Heartthrob announcement to first embed ---
+        if embeds:
+            embeds[0].add_field(name="\u200b", value=chosen_msg, inline=False)  # blank name
+
+        # --- Pagination ---
+        paginator = EmbedPaginator(embeds, ctx.author)
+        await paginator.start(ctx)
+
+    # --------------------GEMS LEADERBOARD --------------------
+    @tr.command(
+        name="leaderboard",
+        aliases=["lb", "top"],
+        description="See the Team Rocket E-Games Leaderboard 🚀"
+    )
     async def tr_leaderboard(self, ctx):
+        # --- Send initial "calculating" message ---
+        calculating_msg = await ctx.send("⏳ Calculating leaderboard, please wait...")
+
+        # --- Fetch latest leaderboard message ---
         channel = self.bot.get_channel(LEADERBOARD_CHANNEL_ID)
         if not channel:
-            return await safe_send(ctx, "⚠️ Leaderboard channel not found.")
+            await calculating_msg.edit(content="⚠️ Leaderboard channel not found.")
+            return
 
         try:
             msg = [m async for m in channel.history(limit=1, oldest_first=False)][0]
         except IndexError:
-            return await safe_send(ctx, "⚠️ No leaderboard message found.")
+            await calculating_msg.edit(content="⚠️ No leaderboard message found.")
+            return
 
-        lines = msg.content.splitlines()
+        # --- Parse leaderboard ---
+        import re
         leaderboard = []
-
-        for line in lines:
+        for line in msg.content.splitlines():
             parts = [p.strip() for p in line.split("-")]
             if len(parts) != 3:
                 continue
-            name, uid, points_str = parts
+            name, uid_str, points_str = parts
             try:
+                uid = int(re.sub(r"\D", "", uid_str))
                 points = int(re.sub(r"\D", "", points_str))
             except ValueError:
-                points = 0
+                continue
             leaderboard.append((name, uid, points))
 
-        # Sort descending by points
+        if not leaderboard:
+            await calculating_msg.edit(content="⚠️ Leaderboard is empty or malformed.")
+            return
+
+        # --- Sort by points descending ---
         leaderboard.sort(key=lambda x: x[2], reverse=True)
 
-        # Split into pages
-        page_size = 10
+        # --- Roles setup ---
+        ELITE_ROLE_NAME = "Rocket Elites 🎖️"
+        CHAMPION_ROLE_NAME = "Rocket Elite Champion 🎖️"
+        champion_color = discord.Colour(0xC04040)  # dark red
+        elite_color = discord.Colour(0xFF6666)  # pastel red
+
+        champion_role = discord.utils.get(ctx.guild.roles, name=CHAMPION_ROLE_NAME)
+        elite_role = discord.utils.get(ctx.guild.roles, name=ELITE_ROLE_NAME)
+
+        if not champion_role:
+            champion_role = await ctx.guild.create_role(
+                name=CHAMPION_ROLE_NAME,
+                colour=champion_color,
+                reason="Top E-Games scorer"
+            )
+        if not elite_role:
+            elite_role = await ctx.guild.create_role(
+                name=ELITE_ROLE_NAME,
+                colour=elite_color,
+                reason="Top 2–10 E-Games scorers"
+            )
+
+        # --- Remove old roles ---
+        for member in ctx.guild.members:
+            try:
+                if champion_role in member.roles:
+                    await member.remove_roles(champion_role, reason="Reset Champion role")
+                if elite_role in member.roles:
+                    await member.remove_roles(elite_role, reason="Reset Elite role")
+            except:
+                pass
+
+        # --- Assign new roles ---
+        for idx, (name, uid, points) in enumerate(leaderboard, start=1):
+            try:
+                member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+            except:
+                continue
+            if not member:
+                continue
+            if idx == 1:
+                await member.add_roles(champion_role, reason="Top scorer Champion")
+            elif 2 <= idx <= 10:
+                await member.add_roles(elite_role, reason="Top 2–10 Elite")
+
+        # --- Build embeds ---
         embeds = []
+        page_size = 10
+        MEDALS = ["🥇", "🥈", "🥉"]  # Only top 3
+
         for i in range(0, len(leaderboard), page_size):
             embed = discord.Embed(
-                title="🚀 Team Rocket E-Games Leaderboard",
-                color=0xFF99FF
+                title="🏆 E-Games Leaderboard",
+                color=discord.Color.dark_theme()
             )
             description_lines = []
             for idx, (name, uid, points) in enumerate(leaderboard[i:i + page_size], start=i + 1):
-                medal = MEDALS[idx - 1] if idx <= len(MEDALS) else ""
-                description_lines.append(f"{medal} {name} — {points:,} 💎")
+                try:
+                    member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+                    display_name = member.display_name if member else str(uid)
+                except:
+                    display_name = str(uid)
+
+                if idx <= 3:
+                    medal = MEDALS[idx - 1]
+                    description_lines.append(f"{medal} {display_name} — {points:,} 💎")
+                else:
+                    description_lines.append(f"{display_name} — {points:,} 💎")
 
             embed.description = "\n".join(description_lines)
-            embed.set_footer(
-                text=f"✨ Be the #1 E-gamer in Events & Rocketverse!"
-            )
+
+            # --- Champion announcement on first page ---
+            if i == 0 and leaderboard:
+                try:
+                    top_member = ctx.guild.get_member(leaderboard[0][1]) or await ctx.guild.fetch_member(
+                        leaderboard[0][1])
+                    if top_member:
+                        messages = [
+                            f"🏆 All hail {top_member.mention}! You’ve struck first and earned the {champion_role.mention} crown!",
+                            f"⚡ {top_member.mention} dominates the leaderboard and is the new {champion_role.mention}!",
+                            f"💥 Watch out! {top_member.mention} just earned the {champion_role.mention} title!"
+                        ]
+                        embed.add_field(
+                            name="",
+                            value=random.choice(messages),
+                            inline=False
+                        )
+                except:
+                    pass
+
+            embed.set_footer(text="✨ Be the #1 E-gamer in Events & Rocketverse!")
             embeds.append(embed)
 
-        if not embeds:
-            return await safe_send(ctx, "⚠️ Leaderboard is empty.")
-
+        # --- Delete calculating message and send paginated embeds ---
+        await calculating_msg.delete()
         paginator = EmbedPaginator(embeds, ctx.author)
         await paginator.start(ctx)
-    # -------------------- GEMS --------------------
-    @tr.command(
-        name="gems",
-        aliases=["gem", "points"],
-        description="Check your Rocketverse gems! 💎"
-    )
-    @commands.cooldown(rate=20, per=300, type=commands.BucketType.user)
-    async def tr_gems(self, ctx: commands.Context):
-        rocket_shop_cog = self.bot.get_cog("RocketShop")
-        if not rocket_shop_cog:
-            return await safe_send(ctx, "⚠️ RocketShop cog is not loaded.")
-
-        channel = self.bot.get_channel(LEADERBOARD_CHANNEL_ID)
-        if not channel:
-            return await safe_send(ctx, "⚠️ Leaderboard channel not found!")
-
-        try:
-            msg = [m async for m in channel.history(limit=1, oldest_first=False)][0]
-        except IndexError:
-            return await safe_send(ctx, "⚠️ No leaderboard message found!")
-
-        user_id_str = str(ctx.author.id)
-        gems = 0
-
-        for line in msg.content.splitlines():
-            parts = [p.strip() for p in line.split("-")]
-            if len(parts) == 3:
-                _, uid, gems_str = parts
-                if uid == user_id_str:
-                    try:
-                        gems = int(re.sub(r"\D", "", gems_str))
-                    except ValueError:
-                        gems = 0
-                    break
-
-        await ctx.send(f"💎 {ctx.author.mention}, you currently have **{gems:,} gems**!")  # <-- commas here
 
     # -------------------- FUN COMMANDS --------------------
     @tr.command(name="roast", description="Roast your enemy 🔥")
