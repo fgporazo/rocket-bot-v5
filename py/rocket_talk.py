@@ -113,9 +113,15 @@ class TalkToStranger(commands.Cog):
             return
 
         guild = channel_1.guild
-        self.ongoing_sessions.pop(guild.id, None)
-        ONGOING_SESSIONS["talk_to_stranger"].pop(guild.id, None)
+        guild_id = guild.id
 
+        # --- Reset in-memory and global session states ---
+        self.ongoing_sessions.pop(guild_id, None)
+        ONGOING_SESSIONS.get("talk_to_stranger", {}).pop(guild_id, None)
+        if guild_id in getattr(self, "cooldowns", {}):
+            self.cooldowns.pop(guild_id, None)  # ✅ Reset cooldown state after restart or end
+
+        # --- Gather non-bot players and remove permissions ---
         players = []
         for ch in (channel_1, channel_2):
             members = [m for m in ch.members if not m.bot]
@@ -130,21 +136,24 @@ class TalkToStranger(commands.Cog):
             except Exception:
                 pass
 
-        # Award gems to both players
+        # --- Award gems to both players (ignore if failed) ---
         for player in players:
             try:
                 await award_points(self.bot, player, 50, dm=True)
             except Exception as e:
                 print(f"[DEBUG] Could not award points to {player}: {e}")
 
-        # Cancel countdown tasks
+        # --- Cancel countdown timers or leftover async tasks ---
         for key in list(self.active_games.keys()):
-            task = self.active_games[key].get("task")
-            if task and not task.done():
-                task.cancel()
+            try:
+                task = self.active_games[key].get("task")
+                if task and not task.done():
+                    task.cancel()
+            except Exception:
+                pass
             self.active_games.pop(key, None)
 
-        # Flavor message in mystery channel
+        # --- Post a flavor message in the main talk channel ---
         talk_channel = guild.get_channel(self.settings.get("MYSTERY_CHANNEL_ID", 0))
         if talk_channel:
             messages = [
@@ -154,7 +163,12 @@ class TalkToStranger(commands.Cog):
                 "🎭 James sighs: Another anonymous chat ends! 🌟 Until the next session… stay mysterious!",
                 "🌌 Wobbuffet: Curtain falls on this Talk to Stranger session! Hope you had fun! ✨"
             ]
-            await talk_channel.send(random.choice(messages))
+            try:
+                await talk_channel.send(random.choice(messages))
+            except Exception as e:
+                print(f"[DEBUG] Could not send flavor message: {e}")
+
+        print(f"[DEBUG] Session cleanup completed for guild {guild_id}")
 
     # ---------------- Commands ----------------
     @commands.command(name="tts")
