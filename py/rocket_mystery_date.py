@@ -105,6 +105,9 @@ class MysteryDate(commands.Cog):
         guild = channel_1.guild
         ONGOING_SESSIONS["mystery_date"].pop(guild.id, None)
 
+        # Load admin IDs once
+        ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()}
+
         players = []
         for ch in (channel_1, channel_2):
             if not ch:
@@ -121,14 +124,17 @@ class MysteryDate(commands.Cog):
             except Exception:
                 pass
 
-        # Award points
+        # 🧩 Award points (skip admins)
         for player in players:
+            if player.id in ADMIN_IDS:
+                print(f"[DEBUG] Skipping award for admin: {player}")
+                continue
             try:
                 await award_points(self.bot, player, 50, dm=True)
             except Exception as e:
                 print(f"[DEBUG] Could not award points to {player}: {e}")
 
-        # Cancel any active countdown tasks
+        # Cancel active countdown tasks
         for key in list(self.active_games.keys()):
             task = self.active_games[key].get("task")
             if task and not task.done():
