@@ -152,7 +152,7 @@ class RocketDial(commands.Cog):
         # Otherwise, mark as waiting
         self.waiting_call = (ctx.guild.id, ctx.channel, webhook)
         await ctx.send(
-            "☎️ **Dialing another Rocket server...**\n"
+            "📞 **Dialing another server...**\n"
             "💡 Tip: The dial ends automatically after **5 minutes** if no one answers.\n"
             "_You can leave a message when the dial times out._"
         )
