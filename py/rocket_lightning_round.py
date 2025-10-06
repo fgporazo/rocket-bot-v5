@@ -154,13 +154,13 @@ class LightningRound(commands.Cog):
             if answered_first is None:
                 await ctx.send("❌ No one clicked in time.")
 
-        # --- Game finished: reward 50 💎 ---
+        # --- Game finished: reward 15 💎 ---
         reward_lines = []
         for uid in self.participants:
             member = ctx.guild.get_member(uid)
             if member:
                 await award_points(self.bot, member, 15, notify_channel=ctx.channel)
-                reward_lines.append(f"🎉 <@{uid}> — +50 💎")
+                reward_lines.append(f"🎉 <@{uid}> — +15 💎")
 
         if reward_lines:
             await ctx.send(embed=discord.Embed(
