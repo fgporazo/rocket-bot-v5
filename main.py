@@ -63,18 +63,16 @@ async def load_extensions():
         "py.rocket_drawing_date",
         "py.rocket_escape_room",
         "py.rocket_secret",
-        "py.rocket_mystery_date",
         "py.rocket_world_clock",
         "py.rocket_slash_news",
         "py.rocket_montage_challenge",
-        #"py.rocket_welcome",
         "py.rocket_press_quest",
         "py.rocket_ship",
         "py.rocket_lightning_round",
         "py.rocket_shop",
         "py.rocket_sabotage",
         "py.rocket_profile",
-        "py.rocket_talk",
+        "py.rocket_dial",
         "py.rocket_catch"
     ]
     for ext in extensions:
