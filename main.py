@@ -36,14 +36,34 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
 # ─── Landing message when joining a server ─────────────
+# ─── Ensure prefix commands (like .duo, .trio) work ─────────────
+@bot.event
+async def on_message(message):
+    # Ignore messages from bots (avoids infinite loops)
+    if message.author.bot:
+        return
+
+    # Process all prefix commands (.duo, .trio, etc.)
+    await bot.process_commands(message)
+
 @bot.event
 async def on_guild_join(guild):
     channel = discord.utils.get(guild.text_channels, name="rocketbot")
     message = (
         "🚀 **Hey Rocket Players!**\n"
         "Thanks for letting me land—I promise I won’t crash your channel… at least not on purpose! 😎\n"
-        "Type `.tr help` to unleash commands, boosts, and a little controlled **chaos**. Bwahahahaha! Let’s blast off! 🚀"
+        "Before we blast off, let’s set up **📞 Rocket Dial**\n"
+        "1️⃣ Create a channel named **#rocket-dial** (or any channel with “rocket-dial” in its name\n"
+        "2️⃣ Once it’s ready, try these commands:\n\n"
+        "📖 **Rocket Dial Commands**\n"
+        "`.rd call` or `.rdc` — Start a Rocket Dial call to another server\n"
+        "`.rd hangup` or `.rdh` — End the current Rocket Dial call\n"
+        "`.rd inbox` — Check saved Rocket Dial messages\n"
+        "`.rd reveal` or `.rdr` — Reveal your real identity to the other server\n"
+        "`.rd` — Show this command guide\n\n"
+        "💡 Tip: The dial ends automatically after 5 minutes if no one answers."
     )
+
     if channel and channel.permissions_for(guild.me).send_messages:
         await channel.send(message)
     else:
@@ -72,8 +92,8 @@ async def load_extensions():
         "py.rocket_shop",
         "py.rocket_sabotage",
         "py.rocket_profile",
-        "py.rocket_dial",
-        "py.rocket_catch"
+        "py.rocket_catch",
+        "py.rocket_dial"
     ]
     for ext in extensions:
         try:
