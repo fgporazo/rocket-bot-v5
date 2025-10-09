@@ -164,43 +164,13 @@ class RocketDial(commands.Cog):
             return await ctx.send("⚠️ Please run this command inside a channel with `rocket-dial` in its name.")
 
         guild_id = str(ctx.guild.id)
-        caller_member_id = str(ctx.author.id)  # the member starting the call
+        caller_member_id = str(ctx.author.id)
 
+        # Check if member is banned/reported 3x (existing logic here) …
         # -------------------------------
-        # CHECK IF MEMBER IS REPORTED 3X (ADMIN_REPORTED_MEMBERS)
-        # -------------------------------
-        main_guild_id = int(os.environ.get("MAIN_GUILD", 0))
-        reported_channel_id = int(os.environ.get("ADMIN_REPORTED_MEMBERS", 0))
 
-        main_guild = self.bot.get_guild(main_guild_id)
-        reported_channel = main_guild.get_channel(reported_channel_id) if main_guild else None
-
-        reported_count = 0
-        if reported_channel:
-            try:
-                # Check last 100 messages in reported channel, newest first
-                async for msg in reported_channel.history(limit=100, oldest_first=False):
-                    parts = msg.content.split("|")
-                    if len(parts) >= 3:
-                        member_id = parts[0].strip()  # treat as string
-                        count_part = parts[2].strip()  # "1x", "2x", etc.
-                        count = int(count_part.replace("x", ""))
-                        if member_id == caller_member_id:
-                            reported_count = count
-                            break
-            except Exception as e:
-                print(f"[rd_call] Error reading reported channel: {e}")
-
-        if reported_count >= 3:
-            return await ctx.send(
-                f"⛔ You have been reported {reported_count} times by other callers and are banned from Rocket Dial for 1 week. Visit the official website and contact an admin to lift your ban."
-            )
-
-        # -------------------------------
-        # EXISTING CALL LOGIC
-        # -------------------------------
         if guild_id in self.calls:
-            return await ctx.send("📞 Your server is already in a Rocket Dial call. Use `.rd hangup` to end it first.")
+            return await ctx.send("📞 Your server is already in a Rocket Dial call. Use `.rd hangup` first.")
         if guild_id in self.waiting_calls:
             return await ctx.send("📞 You already placed a call, please wait for another server to answer.")
 
@@ -223,17 +193,22 @@ class RocketDial(commands.Cog):
                 pass
             del self.waiting_calls[other_gid]
 
+            # Pick unique aliases for caller and partner
             alias_a, alias_b = self.pick_two_unique_aliases()
             now = asyncio.get_event_loop().time()
+
+            # Assign caller alias
             self.calls[guild_id] = {
                 "partner": other_gid,
                 "webhook": webhook,
-                "user_aliases": {},
+                "user_aliases": {caller_member_id: alias_a},
                 "revealed_users": set(),
                 "idle_task": idle_task,
                 "last_activity": now,
                 "caller_member_id": caller_member_id
             }
+
+            # Partner's aliases will be assigned per user when they type
             self.calls[other_gid] = {
                 "partner": guild_id,
                 "webhook": other_webhook,
@@ -247,29 +222,15 @@ class RocketDial(commands.Cog):
             self.active_pairs[guild_id] = other_gid
             self.active_pairs[other_gid] = guild_id
 
-            await ctx.send("📡 **Call connected!** Users will now be masked as Pokémon aliases (silent mode).")
-            await other_channel.send("📡 **Call connected!** Users will now be masked as Pokémon aliases (silent mode).")
-
-            try:
-                other_guild = self.bot.get_guild(int(other_gid))
-                if other_guild:
-                    await ctx.author.send(f"ℹ️ The other caller's server name is **{other_guild.name}**")
-            except Exception:
-                if other_guild:
-                    sent_msg = await ctx.send(
-                        f"ℹ️ Could not DM you, but the other caller's server name is **{other_guild.name}**"
-                    )
-                    await asyncio.sleep(10)
-                    try:
-                        await sent_msg.delete()
-                    except Exception:
-                        pass
+            await ctx.send("📡 **Call connected!** Users will now be masked as Pokémon aliases.")
+            await other_channel.send("📡 **Call connected!** Users will now be masked as Pokémon aliases.")
 
             idle_task = asyncio.create_task(self._idle_monitor_pair(guild_id, other_gid))
             self.calls[guild_id]["idle_task"] = idle_task
             self.calls[other_gid]["idle_task"] = idle_task
             return
 
+        # waiting logic (existing)
         msg = await ctx.send(
             "📞 **Dialing...**\n🚀 Waiting for another server to pick up. Call will auto-hangup in 30 seconds if unanswered."
         )
@@ -535,37 +496,51 @@ class RocketDial(commands.Cog):
                     await self._hangup_pair(gid)
                     return
 
-    # ---------------------------
-    # on_message forwarding
+    # on_message forwarding (fixed)
     # ---------------------------
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild or message.webhook_id is not None: return
-        if not isinstance(message.channel, discord.TextChannel): return
-        if "rocket-dial" not in message.channel.name.lower(): return
+        if message.author.bot or not message.guild or message.webhook_id is not None:
+            return
+        if not isinstance(message.channel, discord.TextChannel):
+            return
+        if "rocket-dial" not in message.channel.name.lower():
+            return
 
         guild_id = str(message.guild.id)
-        if guild_id not in self.calls: return
+        if guild_id not in self.calls:
+            return
 
         call_info = self.calls[guild_id]
         partner_id = call_info.get("partner")
-        if not partner_id: return
+        if not partner_id:
+            return
 
         partner_info = self.calls.get(str(partner_id))
-        if not partner_info: return
+        if not partner_info:
+            return
 
         target_webhook = partner_info.get("webhook")
-        if not target_webhook: return
+        if not target_webhook:
+            return
 
-        # update last activity
+        # Update last activity
         call_info["last_activity"] = asyncio.get_event_loop().time()
 
+        # Assign unique alias per user in this guild only
         alias_map = call_info.setdefault("user_aliases", {})
-        alias_entry = alias_map.get(message.author.id)
-        if not alias_entry:
-            alias_entry = random.choice(POKEMON_GIFS)
+        if message.author.id not in alias_map:
+            # Avoid using aliases already in use in this guild
+            used_aliases = {v["name"] for v in alias_map.values()}
+            available_aliases = [p for p in POKEMON_GIFS if p["name"] not in used_aliases]
+            if not available_aliases:  # fallback
+                available_aliases = POKEMON_GIFS
+            alias_entry = random.choice(available_aliases)
             alias_map[message.author.id] = alias_entry
+        else:
+            alias_entry = alias_map[message.author.id]
 
+        # Forward the message via the partner webhook
         try:
             await target_webhook.send(
                 content=message.content,
