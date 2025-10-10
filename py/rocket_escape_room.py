@@ -5,7 +5,7 @@ import asyncio
 import random
 import os
 import datetime
-from helpers import (award_points)
+from helpers import award_points,check_main_guild
 
 ESCAPE_ROOM_CHANNEL_ID = int(os.getenv("ESCAPE_ROOM_CHANNEL_ID", 0))
 
@@ -28,7 +28,10 @@ class RocketEscapeRoom(commands.Cog):
         commands_list.sort()
         help_text = "\n".join(commands_list)
         await ctx.send(f"📖 **Team Rocket Escape Room Commands Guide**\n{help_text}")
-        await ctx.send(f"Go to <#{ESCAPE_ROOM_CHANNEL_ID}> now.")
+
+        channel_check = ctx.guild.get_channel(ESCAPE_ROOM_CHANNEL_ID)
+        if channel_check:
+            await ctx.send(f"Go to <#{ESCAPE_ROOM_CHANNEL_ID}> now.")
 
     @er.command(name="start",help="Start a dramatic Team Rocket escape mission")
     async def er_start(self, ctx):
