@@ -13,15 +13,10 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 load_dotenv()
-#─── Database Path ─────────────────────────────
-# Ensure persistent path on Railway (Volume mount at /data)
-PERSIST_DIR = "/data"
-DB_PATH = os.path.join(PERSIST_DIR, "rocket.db")
-
-# Fallback for local testing (if /data does not exist)
-if not os.path.exists(PERSIST_DIR):
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DB_PATH = os.path.join(BASE_DIR, "rocket.db")
+# ─── Database Path ─────────────────────────────
+#DB_PATH = "/data/rocket.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "rocket.db")
 
 # ─── Daily Limits ─────────────────────────────
 ADMIN_DATE_LIMIT_PER_DAY = 5
@@ -326,14 +321,36 @@ class EmbedPaginator(discord.ui.View):
             except Exception:
                 pass
 # ─── ADMIN & JSON Utils ────────────────────────────
+async def check_main_guild(obj: Union[commands.Context, discord.Interaction]) -> bool:
+    """
+    Checks if the command is used inside the MAIN_GUILD.
+    Works for both prefix commands (Context) and slash commands (Interaction).
+    Sends an ephemeral warning for slash commands and normal message for prefix commands.
+    Returns True if inside MAIN_GUILD, False otherwise.
+    """
+    MAIN_GUILD_ID = int(os.getenv("MAIN_GUILD", 0))
+    guild = getattr(obj, "guild", None)
+    if guild is None or guild.id != MAIN_GUILD_ID:
+        # Slash command
+        if isinstance(obj, discord.Interaction):
+            await obj.response.send_message(
+                "⚠️ This command can only be used in the Main Server (PFL Server).",
+                ephemeral=True
+            )
+        # Prefix command
+        elif isinstance(obj, commands.Context):
+            await obj.send(
+                "⚠️ This command can only be used in the Main Server (PFL Server)."
+            )
+        return False
+    return True
+
+# Set of trusted admin IDs
 ADMIN_IDS = set(int(uid.strip()) for uid in os.getenv("ADMIN_IDS", "").split(",") if uid.strip())
 
 def is_admin(user: Union[discord.User, discord.Member]) -> bool:
-    if user.id in ADMIN_IDS:
-        return True
-    if isinstance(user, discord.Member):
-        return user.guild_permissions.administrator
-    return False
+    """Check if the user is in the trusted ADMIN_IDS list. Server admin permissions are ignored."""
+    return user.id in ADMIN_IDS
 
 def dm_link(thread: Union[discord.Thread, discord.Message]) -> str:
     """Returns a clickable jump link to a thread or message."""
