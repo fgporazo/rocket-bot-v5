@@ -58,7 +58,7 @@ class RocketDate(commands.Cog):
     async def tr(self, ctx):
         """📖 Team Rocket Fun & Games Guide"""
         # Filter commands by name
-        allowed = ["list", "date", "dateyes","dateno","history", "leaderboard", "roast","scream","drama","thunderbolt"]  # commands you want to show
+        allowed = ["list", "date","datelb", "dateyes","dateno","history", "leaderboard", "roast","scream","drama","thunderbolt"]  # commands you want to show
         commands_list = [
             f"`.tr {c.name}` - {c.description or 'No description'}"
             for c in self.tr.commands
@@ -216,11 +216,28 @@ class RocketDate(commands.Cog):
 
         # Role checks for participation
         if not is_edate_gamer(sender) or not is_edate_gamer(member):
-            return await safe_send(ctx,
-                                   f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
-                                   f"Catching roles include: <@&{self.catch_pokemen_id}>, <@&{self.catch_pokewomen_id}>, <@&{self.catch_all_id}>.\n"
-                                   f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
-                                   f"and assign yourself the Catching roles you're interested in.")
+            if ctx.guild.get_role(self.catch_pokemen_id):
+                catchPoke = f"<@&{self.catch_pokemen_id}>"
+            else:
+                catchPoke = "Catching PokeMen"
+
+            if ctx.guild.get_role(self.catch_pokewomen_id):
+                catchPokeWomen = f"<@&{self.catch_pokewomen_id}>"
+            else:
+                catchPokeWomen = "Catching PokeWomen"
+
+            if ctx.guild.get_role(self.catch_all_id):
+                catchAll = f"<@&{self.catch_all_id}>"
+            else:
+                catchAll = "Catching 'em all"
+
+            return await safe_send(
+                ctx,
+                f"❌ Only candidates with Catching roles can participate in e-dates. 🚀\n\n"
+                f"Catching roles include: {catchPoke}, {catchPokeWomen}, {catchAll}.\n"
+                f"If you're interested in e-date games, go to <#{self.choose_roles_channel_id}> "
+                f"and assign yourself the Catching roles you're interested in."
+            )
 
         # Daily limit check (no exceptions)
         limit = ADMIN_DATE_LIMIT_PER_DAY if is_admin(sender) else USER_DATE_LIMIT_PER_DAY
@@ -248,7 +265,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="🚀 Love is a battlefield, choose wisely.")
         await safe_send(ctx, embed=embed)
         # Award +1 point for using this command
-        await award_points(self.bot, ctx.author, 50,notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5,notify_channel=ctx.channel)
     # -------------------- ACCEPT --------------------
     @tr.command(name="dateyes", description="Accept an e-date request from other PokeCandidates 💖")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -277,7 +294,7 @@ class RocketDate(commands.Cog):
         embed.set_footer(text="💘 Team Rocket spreads love and chaos!")
         await safe_send(ctx, embed=embed)
 
-        await award_points(self.bot, ctx.author, 50, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 5, notify_channel=ctx.channel)
     # -------------------- REJECT --------------------
     @tr.command(name="dateno", description="Reject an e-date request from a user 💔 (optionally add a reason)")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -308,7 +325,7 @@ class RocketDate(commands.Cog):
         )
         embed.set_footer(text="😼 Don’t break too many hearts, Rocket!")
         await safe_send(ctx, embed=embed)
-        await award_points(self.bot, ctx.author, 30, notify_channel=ctx.channel)
+        await award_points(self.bot, ctx.author, 3, notify_channel=ctx.channel)
     # -------------------- HISTORY --------------------
     @tr.command(name="history", description="💌 Show e-date history")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -358,7 +375,7 @@ class RocketDate(commands.Cog):
         paginator = EmbedPaginator(embeds, ctx.author)
         await paginator.start(ctx)
     # -------------------- DATE LEADERBOARD --------------------
-    @tr.command(name="datelb", help="🏆 Show the e-date leaderboard")
+    @tr.command(name="datelb", description="🏆 Show the e-date leaderboard")
     async def date_leaderboard(self, ctx):
         HEARTTHROB_ROLE_NAME = "Heartthrob 💘"
 
@@ -425,7 +442,7 @@ class RocketDate(commands.Cog):
     @tr.command(
         name="leaderboard",
         aliases=["lb", "top"],
-        description="See the Team Rocket E-Games Leaderboard 🚀"
+        description="See the Rocket E-Games Leaderboard 🚀"
     )
     async def tr_leaderboard(self, ctx):
         # --- Send initial "calculating" message ---
@@ -465,6 +482,17 @@ class RocketDate(commands.Cog):
         # --- Sort by points descending ---
         leaderboard.sort(key=lambda x: x[2], reverse=True)
 
+        # --- Filter only members still in the server ---
+        valid_leaderboard = []
+        for name, uid, points in leaderboard:
+            member = ctx.guild.get_member(uid)
+            if member:  # only include members still in server
+                valid_leaderboard.append((member, uid, points))
+
+        if not valid_leaderboard:
+            await calculating_msg.edit(content="⚠️ No valid members found in leaderboard.")
+            return
+
         # --- Roles setup ---
         ELITE_ROLE_NAME = "Rocket Elites 🎖️"
         CHAMPION_ROLE_NAME = "Rocket Elite Commander 🎖️"
@@ -498,36 +526,28 @@ class RocketDate(commands.Cog):
                 pass
 
         # --- Assign new roles ---
-        for idx, (name, uid, points) in enumerate(leaderboard, start=1):
+        for idx, (member, uid, points) in enumerate(valid_leaderboard, start=1):
             try:
-                member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+                if idx == 1:
+                    await member.add_roles(champion_role, reason="Top scorer Champion")
+                elif 2 <= idx <= 10:
+                    await member.add_roles(elite_role, reason="Top 2–10 Elite")
             except:
                 continue
-            if not member:
-                continue
-            if idx == 1:
-                await member.add_roles(champion_role, reason="Top scorer Champion")
-            elif 2 <= idx <= 10:
-                await member.add_roles(elite_role, reason="Top 2–10 Elite")
 
         # --- Build embeds ---
         embeds = []
         page_size = 10
         MEDALS = ["🥇", "🥈", "🥉"]  # Only top 3
 
-        for i in range(0, len(leaderboard), page_size):
+        for i in range(0, len(valid_leaderboard), page_size):
             embed = discord.Embed(
                 title="🏆 E-Games Leaderboard",
-                color=discord.Color.dark_theme()
+                color=discord.Color.from_str("#1abc9c")
             )
             description_lines = []
-            for idx, (name, uid, points) in enumerate(leaderboard[i:i + page_size], start=i + 1):
-                try:
-                    member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
-                    display_name = member.display_name if member else str(uid)
-                except:
-                    display_name = str(uid)
-
+            for idx, (member, uid, points) in enumerate(valid_leaderboard[i:i + page_size], start=i + 1):
+                display_name = member.display_name if member else "Unknown User"
                 if idx <= 3:
                     medal = MEDALS[idx - 1]
                     description_lines.append(f"{medal} {display_name} — {points:,} 💎")
@@ -537,23 +557,18 @@ class RocketDate(commands.Cog):
             embed.description = "\n".join(description_lines)
 
             # --- Champion announcement on first page ---
-            if i == 0 and leaderboard:
-                try:
-                    top_member = ctx.guild.get_member(leaderboard[0][1]) or await ctx.guild.fetch_member(
-                        leaderboard[0][1])
-                    if top_member:
-                        messages = [
-                            f"🏆 All hail {top_member.mention}! You’ve struck first and earned the {champion_role.mention} crown!",
-                            f"⚡ {top_member.mention} dominates the leaderboard and is the new {champion_role.mention}!",
-                            f"💥 Watch out! {top_member.mention} just earned the {champion_role.mention} title!"
-                        ]
-                        embed.add_field(
-                            name="",
-                            value=random.choice(messages),
-                            inline=False
-                        )
-                except:
-                    pass
+            if i == 0 and valid_leaderboard:
+                top_member = valid_leaderboard[0][0]
+                messages = [
+                    f"🏆 All hail {top_member.mention}! You’ve struck first and earned the {champion_role.mention} crown!",
+                    f"⚡ {top_member.mention} dominates the leaderboard and is the new {champion_role.mention}!",
+                    f"💥 Watch out! {top_member.mention} just earned the {champion_role.mention} title!"
+                ]
+                embed.add_field(
+                    name="",
+                    value=random.choice(messages),
+                    inline=False
+                )
 
             embed.set_footer(text="✨ Be the #1 E-gamer in Events & Rocketverse!")
             embeds.append(embed)
@@ -564,7 +579,6 @@ class RocketDate(commands.Cog):
         await paginator.start(ctx)
 
     # -------------------- FUN COMMANDS --------------------
-    # -------------------- FUN COMMANDS --------------------
     @tr.command(name="roast", description="Roast your enemy 🔥")
     @commands.cooldown(5, 60, commands.BucketType.user)
     async def roast(self, ctx, member: Optional[discord.Member] = None):
@@ -574,27 +588,26 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "🤖 You can’t roast a bot, silly human.")
         if member == ctx.author:
             return await safe_send(ctx, "💔 You can’t roast yourself — that’s emotional damage!")
-    
+
         # ⚡ Admin protection
         if is_admin(member):
             await ctx.send(random.choice(self.thunderbolt_protected_lines).format(
                 target=member.mention, name=ctx.author.mention
             ))
             return
-    
+
         # 🔥 Pick unique roast line
         if not self.roast_queue:
             self.roast_queue = self.roast_lines.copy()
             random.shuffle(self.roast_queue)
         template = self.roast_queue.pop()
-    
+
         await ctx.send(template.format(author=ctx.author.mention, target=member.mention))
-    
+
         if not ctx.command.is_on_cooldown(ctx):
             await update_daily_quest(self.bot, ctx.author, "b")
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
-    
-    
+
     @tr.command(name="scream", description="Scream to your enemy 📢")
     @commands.cooldown(5, 60, commands.BucketType.user)
     async def scream(self, ctx, member: Optional[discord.Member] = None):
@@ -604,7 +617,7 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "🤖 Bots don’t care about your screams!")
         if member == ctx.author:
             return await safe_send(ctx, "💀 Screaming at yourself? Seek help, villain.")
-    
+
         available = [line for line in self.scream_queue if line != self.last_scream_template]
         if not available:
             self.scream_queue = self.scream_lines.copy()
@@ -614,10 +627,9 @@ class RocketDate(commands.Cog):
         self.last_scream_template = chosen
         self.scream_queue.remove(chosen)
         await ctx.send(chosen.format(author=ctx.author.mention, target=member.mention))
-    
+
         if not ctx.command.is_on_cooldown(ctx):
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
-
 
     @tr.command(name="drama", description="Stirr some drama 🎭")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -628,7 +640,7 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "🤖 You can’t cause drama with bots!")
         if member == ctx.author:
             return await safe_send(ctx, "💅 You can’t start drama with yourself — that’s just journaling.")
-    
+
         available = [line for line in self.drama_queue if line != self.last_drama_template]
         if not available:
             self.drama_queue = self.drama_lines.copy()
@@ -638,11 +650,10 @@ class RocketDate(commands.Cog):
         self.last_drama_template = chosen
         self.drama_queue.remove(chosen)
         await ctx.send(chosen.format(author=ctx.author.mention, target=member.mention))
-    
+
         if not ctx.command.is_on_cooldown(ctx):
             await update_daily_quest(self.bot, ctx.author, "c")
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
-
 
     @tr.command(name="thunderbolt", description="Zap someone ⚡")
     @commands.cooldown(5, 60, commands.BucketType.user)
@@ -653,24 +664,23 @@ class RocketDate(commands.Cog):
             return await safe_send(ctx, "🤖 Bots are immune to your electricity!")
         if member == ctx.author:
             return await safe_send(ctx, "⚡ You can’t thunderbolt yourself! (Well, you *could*... but let’s not.)")
-    
+
         # ⚡ Admin protection
         if is_admin(member):
             await ctx.send(random.choice(self.thunderbolt_protected_lines).format(
                 target=member.mention, name=ctx.author.mention
             ))
             return
-    
+
         if not self.thunderbolt_queue:
             self.thunderbolt_queue = self.thunderbolt_lines.copy()
             random.shuffle(self.thunderbolt_queue)
         template = self.thunderbolt_queue.pop()
         await ctx.send(template.format(author=ctx.author.mention, target=member.mention))
-    
+
         if not ctx.command.is_on_cooldown(ctx):
             await update_daily_quest(self.bot, ctx.author, "a")
             await award_points(self.bot, ctx.author, 1, notify_channel=ctx.channel)
-
 
     # -------------------- SHOUTING SPRING --------------------
     @tr.command(name="ss", description="Shout about your day! 💦 Team Rocket is here for you 💖")
@@ -782,7 +792,7 @@ class RocketDate(commands.Cog):
         await safe_send(ctx, f"📖 **Team Rocket E-Date & Fun Commands Guide**\n{help_text}")
 
     # -------------------- ANNOUNCE --------------------
-    @tr.command(name="announce", description="📢 Send an announcement (Admins only).")
+    @tr.command(name="announce", description="📢 Send an announcement.")
     async def tr_announce(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, content: str):
         if not is_admin(ctx.author):
             return await safe_send(ctx, "🚫 You don’t have permission to use this command!")
