@@ -497,9 +497,9 @@ class RocketDial(commands.Cog):
         # Mark unveiled for message display
         call_info["revealed_users"].add(ctx.author.id)
 
-    # ---------------------------
+    # ----------------------------
     # .rd report / .rdr
-    # ---------------------------
+    # ----------------------------
     @rd.command(name="report", aliases=["rdr"])
     async def rd_report(self, ctx: commands.Context, *, reason: str = "No reason provided"):
         import datetime, os
