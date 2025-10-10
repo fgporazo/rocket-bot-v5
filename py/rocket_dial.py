@@ -119,32 +119,42 @@ class RocketDial(commands.Cog):
     ):
         """
         End the call between gid_a and its partner.
-        Keeps original behavior but ensures only the *other* side gets notified
-        when one guild manually hangs up.
+        Notifies only the other side once.
+        Fully prevents duplicate notifications even in async races.
         """
-        info_a = self.calls.pop(gid_a, None)
-        partner = info_a.get("partner") if info_a else self.active_pairs.pop(gid_a, None)
-        if partner:
-            self.active_pairs.pop(str(partner), None)
-        info_b = self.calls.pop(str(partner), None) if partner else None
 
-        # Cancel idle monitor & delete webhooks
-        for info in [info_a, info_b]:
-            if info and info.get("idle_task"):
-                try:
-                    info["idle_task"].cancel()
-                except Exception:
-                    pass
-            if info and info.get("webhook"):
-                try:
-                    await self.safe_delete_webhook(info["webhook"])
-                except Exception:
-                    pass
+        # Use a set to track calls that are ending
+        if not hasattr(self, "_ending_calls"):
+            self._ending_calls = set()
 
-        # ✅ Notify both sides — but skip message on the guild that initiated hangup
+        if gid_a in self._ending_calls:
+            return  # Already being ended, skip
+
+        self._ending_calls.add(gid_a)
         try:
+            info_a = self.calls.pop(gid_a, None)
+            partner = info_a.get("partner") if info_a else self.active_pairs.pop(gid_a, None)
+            if partner:
+                self.active_pairs.pop(str(partner), None)
+            info_b = self.calls.pop(str(partner), None) if partner else None
+
+            # Cancel idle monitor & delete webhooks
+            for info in [info_a, info_b]:
+                if info and info.get("idle_task"):
+                    try:
+                        info["idle_task"].cancel()
+                    except Exception:
+                        pass
+                if info and info.get("webhook"):
+                    try:
+                        await self.safe_delete_webhook(info["webhook"])
+                    except Exception:
+                        pass
+
+            # Notify both sides — but only once per guild
+            notified_guilds = set()
             for gid in [gid_a, str(partner)]:
-                if not gid:
+                if not gid or int(gid) in notified_guilds:
                     continue
                 g = self.bot.get_guild(int(gid))
                 if not g:
@@ -152,15 +162,14 @@ class RocketDial(commands.Cog):
                 ch = self.find_dial_channel(g)
                 if not ch:
                     continue
-
-                # ✅ Only send message to the *other* side
-                if initiator_guild_id and int(gid) == initiator_guild_id:
-                    continue  # skip notifying the initiator
+                if initiator_guild_id and int(gid) == int(initiator_guild_id):
+                    continue
 
                 await ch.send("📴 **The other side hung up. The call has ended.**")
+                notified_guilds.add(int(gid))
 
-        except Exception as e:
-            print(f"[RocketDial] notify error during hangup: {e}")
+        finally:
+            self._ending_calls.discard(gid_a)  # ensure flag is cleared
 
     # ---------------------------
     # Helper to read admin reported channel and get report count
@@ -514,7 +523,6 @@ class RocketDial(commands.Cog):
         if not call_info:
             return await ctx.send("⚠️ You are not in an active Rocket Dial call.")
 
-        # Partner info
         partner_guild_id = call_info.get("partner")
         partner_call_info = self.calls.get(str(partner_guild_id))
         if not partner_call_info:
@@ -523,11 +531,10 @@ class RocketDial(commands.Cog):
         reporter = ctx.author
         reporter_id = reporter.id
 
-        # Track warned messages to avoid duplicates
         warned_set = self.user_reports.setdefault(reporter_id, set())
 
         # -------------------------------
-        # Check initiators (only original initiators can file reports)
+        # Check initiators
         # -------------------------------
         initiators = {i for i in call_info.get("initiators", set()) if isinstance(i, int)}
         if reporter_id not in initiators:
@@ -537,19 +544,17 @@ class RocketDial(commands.Cog):
                 f"⚠️ You are not one of the original initiators. Only the two who started this call can report. ({mention})"
             )
 
+        # -------------------------------
         # Determine reported member id and alias
+        # -------------------------------
         partner_member_id = partner_call_info.get("caller_member_id")
         if not partner_member_id:
-            return await ctx.send(
-                "⚠️ Cannot report this member because their identity could not be verified."
-            )
+            return await ctx.send("⚠️ Cannot report this member because their identity could not be verified.")
 
         user_aliases = partner_call_info.get("user_aliases", {})
         reported_alias = next(iter(user_aliases.values()))["name"] if user_aliases else "Unknown Pokémon"
 
-        # Sanitize reason
-        reason = (reason or "No reason provided").strip()
-        reason = reason.replace("|", "/")  # avoid breaking the format
+        reason = (reason or "No reason provided").strip().replace("|", "/")
 
         # -------------------------------
         # Admin channels
@@ -565,24 +570,43 @@ class RocketDial(commands.Cog):
         if not main_guild:
             return await ctx.send("⚠️ Main guild not found.")
 
-        reported_channel = main_guild.get_channel(reported_channel_id) if main_guild else None
-        reporter_channel = main_guild.get_channel(reporter_channel_id) if main_guild else None
+        reported_channel = main_guild.get_channel(reported_channel_id)
+        reporter_channel = main_guild.get_channel(reporter_channel_id)
 
         # -------------------------------
-        # Check reporter max reports
+        # Fetch existing messages once per channel
         # -------------------------------
         reporter_count = 0
+        reported_count = 1
+        reporter_msg = None
+        reported_msg = None
+
         if reporter_channel:
             try:
                 async for msg in reporter_channel.history(limit=200):
                     parts = msg.content.split("|", maxsplit=3)
                     if parts[0].strip() == str(reporter_id):
                         reporter_count = int(parts[2].strip().replace("x", ""))
+                        reporter_msg = msg
                         break
             except Exception:
                 pass
 
-        # Prevent duplicate max-report message
+        if reported_channel:
+            try:
+                async for msg in reported_channel.history(limit=200):
+                    parts = msg.content.split("|", maxsplit=3)
+                    if parts[0].strip() == str(partner_member_id):
+                        current_count = int(parts[2].strip().replace("x", ""))
+                        reported_count = min(current_count + 1, 3)
+                        reported_msg = msg
+                        break
+            except Exception:
+                pass
+
+        # -------------------------------
+        # Check max reports
+        # -------------------------------
         if reporter_count >= 3:
             if "max_report_warned" not in warned_set:
                 await ctx.send("⚠️ You have reached the maximum number of reports (3).")
@@ -590,57 +614,47 @@ class RocketDial(commands.Cog):
             return
 
         # -------------------------------
-        # Update reported member record
+        # Update reported channel
         # -------------------------------
-        reported_count = 1
         if reported_channel:
-            try:
-                last_msg = None
-                async for msg in reported_channel.history(limit=200):
-                    parts = msg.content.split("|", maxsplit=3)
-                    if parts[0].strip() == str(partner_member_id):
-                        last_msg = msg
-                        break
-                if last_msg:
-                    parts = last_msg.content.split("|", maxsplit=3)
-                    current_count = int(parts[2].strip().replace("x", ""))
-                    reported_count = min(current_count + 1, 3)
-                    new_content = f"{partner_member_id} | {reported_alias} | {reported_count}x | {reason}"
-                    # Only edit if content changed
-                    if last_msg.content != new_content:
-                        await last_msg.edit(content=new_content)
-                else:
-                    await reported_channel.send(
-                        f"{partner_member_id} | {reported_alias} | {reported_count}x | {reason}")
-            except Exception as e:
-                print(f"[rd_report] Failed updating reported channel: {e}")
+            new_reported_content = f"{partner_member_id} | {reported_alias} | {reported_count}x | {reason}"
+            if reported_msg:
+                if reported_msg.content != new_reported_content:
+                    await reported_msg.edit(content=new_reported_content)
+            else:
+                await reported_channel.send(new_reported_content)
 
         # -------------------------------
-        # Update reporter record
+        # Update reporter channel
         # -------------------------------
         reporter_count += 1
         if reporter_channel:
-            try:
-                last_msg = None
-                async for msg in reporter_channel.history(limit=200):
-                    parts = msg.content.split("|", maxsplit=3)
-                    if parts[0].strip() == str(reporter_id):
-                        last_msg = msg
-                        break
-                if last_msg:
-                    new_reporter_content = f"{reporter_id} | {reporter.display_name} | {reporter_count}x"
-                    if last_msg.content != new_reporter_content:
-                        await last_msg.edit(content=new_reporter_content)
-                else:
-                    await reporter_channel.send(f"{reporter_id} | {reporter.display_name} | {reporter_count}x")
-            except Exception as e:
-                print(f"[rd_report] Failed updating reporter channel: {e}")
+            new_reporter_content = f"{reporter_id} | {reporter.display_name} | {reporter_count}x"
+            if reporter_msg:
+                if reporter_msg.content != new_reporter_content:
+                    await reporter_msg.edit(content=new_reporter_content)
+            else:
+                await reporter_channel.send(new_reporter_content)
 
         # -------------------------------
-        # Confirm & hangup
+        # Confirm report (duplication-proof)
         # -------------------------------
-        await ctx.send(f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)")
-        await self._hangup_pair(guild_id, notify_both=True)
+        if "report_confirmed" not in warned_set:
+            await ctx.send(
+                f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)"
+                "📞Call disconnected.\n"
+            )
+            warned_set.add("report_confirmed")
+
+        # -------------------------------
+        # Hang up the call (notify only the other side)
+        # -------------------------------
+        await self._hangup_pair(
+            gid_a=guild_id,
+            reason_initiator=None,
+            notify_both=True,
+            initiator_guild_id=int(ctx.guild.id)
+        )
 
     # ---------------------------
     # .rd friend / .rdfr
