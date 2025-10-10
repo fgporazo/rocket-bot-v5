@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord.ui import View
 import asyncio
 import random
-
+from helpers import check_main_guild
 # ---------------- Admin IDs from ENV ----------------
 ADMIN_IDS = set()
 admin_ids_str = os.getenv("ADMIN_IDS", "")
@@ -16,7 +16,7 @@ def is_admin(interaction: discord.Interaction) -> bool:
     return interaction.user.id in ADMIN_IDS
 
 # ---------------- GIF Choices ----------------
-GIT_CHOICES = [
+GIF_CHOICES = [
     "https://media.tenor.com/JzGtcFnBEIMAAAAj/glitter-pikachu.gif",
     "https://i.pinimg.com/originals/50/30/a2/5030a2f440e5889cf58ea0ec27ad780a.gif",
     "https://www.picgifs.com/graphics/p/pokemon/graphics-pokemon-212030.gif",
@@ -46,7 +46,7 @@ class RocketSlashNews(commands.Cog):
     # ---------------- Rocket News Command ----------------
     @app_commands.command(
         name="rocket-news",
-        description="Simulate a Team Rocket TV news broadcast"
+        description="Launch a Team Rocket announcement (Rocket Admins only)"
     )
     @app_commands.describe(
         headline="Main headline for the news",
@@ -60,6 +60,9 @@ class RocketSlashNews(commands.Cog):
             details: str,
             ticker: str = None
     ):
+        if not await check_main_guild(interaction):
+            return  # stop execution if not in main server
+
         if not is_admin(interaction):
             await interaction.response.send_message(
                 "🚫 Only admins can use this command.", ephemeral=True
@@ -204,7 +207,7 @@ class RocketSlashNews(commands.Cog):
             rocket_texts.append(f"{emojis[idx]} {idx+1}. {mention} — {order_texts[idx]}")
 
         rocket_text = "\n".join(rocket_texts)
-        chosen_gif = random.choice(GIT_CHOICES)
+        chosen_gif = random.choice(GIF_CHOICES)
 
         embed = Embed(
             title="Your reaction Matters! ✨",
