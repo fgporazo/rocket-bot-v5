@@ -641,7 +641,7 @@ class RocketDial(commands.Cog):
         # -------------------------------
         if "report_confirmed" not in warned_set:
             await ctx.send(
-                f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)"
+                f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)\n"
                 "📞Call disconnected.\n"
             )
             warned_set.add("report_confirmed")
