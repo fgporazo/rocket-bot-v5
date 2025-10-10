@@ -11,7 +11,7 @@ import re
 from collections import defaultdict
 
 ADMIN_ROCKET_LIST_CHANNEL_ID = int(os.getenv("ADMIN_ROCKET_LIST_CHANNEL_ID", 0))
-CATCH_CHANNEL_ID = int(os.getenv("CATCH_CHANNEL_ID", 0))
+CATCH_CHANNEL_NAME_KEYWORD = "catch"  # Look for channels containing this keyword
 
 CATCH_TITLES = [
     "🚨 {pokemon} spotted nearby! Catch it before it escapes! 🏃‍♂️💨",
@@ -37,9 +37,9 @@ FAIL_LINES = [
     "💥 Meowth: ‘Blasted off again... without even catching it!’"
 ]
 
-MEDALS = ["🥇", "🥈", "🥉"]  # Top 3 medals
-# Global lock to ensure only one user can run the leaderboard at a time
-pokecatch_lock = asyncio.Lock()
+MEDALS = ["🥇", "🥈", "🥉"]
+pokecatch_lock = asyncio.Lock()  # Prevent multiple leaderboards
+
 # -----------------------------
 # Custom admin check decorator
 # -----------------------------
@@ -47,6 +47,7 @@ def admin_only():
     async def predicate(interaction: discord.Interaction) -> bool:
         return is_admin(interaction.user)
     return app_commands.check(predicate)
+
 
 
 # -----------------------------
@@ -81,13 +82,12 @@ class CatchView(discord.ui.View):
             rc_cog = self.bot.get_cog("RocketCatch")
             now = datetime.utcnow()
 
-            # Reset user attempts if 1 hour passed since last try
+            # Reset attempts after 1 hour
             if user.id in rc_cog.user_attempts:
                 last_time = rc_cog.user_attempts[user.id]["last"]
                 if now - last_time > timedelta(hours=1):
                     rc_cog.user_attempts[user.id] = {"count": 0, "last": now}
 
-            # Check cooldown
             cooldown_end = rc_cog.cooldowns.get(user.id)
             if cooldown_end and now < cooldown_end:
                 remaining = int((cooldown_end - now).total_seconds() / 60)
@@ -103,7 +103,6 @@ class CatchView(discord.ui.View):
             data["last"] = now
             rc_cog.user_attempts[user.id] = data
 
-            # Apply cooldown if reached 10
             if data["count"] >= 10:
                 rc_cog.cooldowns[user.id] = now + timedelta(minutes=30)
                 rc_cog.user_attempts[user.id] = {"count": 0, "last": now}
@@ -113,7 +112,6 @@ class CatchView(discord.ui.View):
                 )
                 return
 
-            # Proceed with normal catching logic
             if self.answered:
                 await interaction.response.send_message("❌ Someone already made the choice!", ephemeral=True)
                 return
@@ -168,9 +166,12 @@ class CatchView(discord.ui.View):
                 description="Better luck next time, PokeCandidate!",
                 color=discord.Color.dark_gray()
             )
-            channel = self.bot.get_channel(CATCH_CHANNEL_ID)
-            if channel:
-                await channel.send(embed=embed)
+
+            # Send to the first channel containing "catch"
+            for channel in self.bot.get_all_channels():
+                if isinstance(channel, discord.TextChannel) and CATCH_CHANNEL_NAME_KEYWORD in channel.name.lower():
+                    await channel.send(embed=embed)
+                    break
 
             if self.next_callback:
                 await self.next_callback()
@@ -186,24 +187,23 @@ class RocketCatch(commands.Cog):
         self.bot = bot
         self.pokemon_data = []
         self.pokemon_queue = []
-        self.user_attempts = {}  # {user_id: {"count": int, "last": datetime}}
-        self.cooldowns = {}  # {user_id: datetime}
+        self.user_attempts = {}
+        self.cooldowns = {}
         self._lb_running = False
+
     async def load_second_latest_json_from_channel(self):
-        """Fetch JSON from the second-most-recent message with a JSON attachment."""
         channel = self.bot.get_channel(ADMIN_ROCKET_LIST_CHANNEL_ID)
         if not channel:
             print("⚠️ Admin channel not found.")
             return []
 
-        found_count = 0  # counts messages with JSON
-
+        found_count = 0
         async for message in channel.history(limit=5):
             if message.attachments:
                 for attachment in message.attachments:
                     if attachment.filename.endswith(".json"):
                         found_count += 1
-                        if found_count == 2:  # second latest JSON message
+                        if found_count == 2:
                             try:
                                 data = await attachment.read()
                                 return json.loads(data.decode("utf-8"))
@@ -237,7 +237,12 @@ class RocketCatch(commands.Cog):
         )
         embed.set_thumbnail(url=pokemon.get("img_url", ""))
 
-        channel = self.bot.get_channel(CATCH_CHANNEL_ID)
+        # Find the first channel containing "catch"
+        channel = None
+        for ch in self.bot.get_all_channels():
+            if isinstance(ch, discord.TextChannel) and CATCH_CHANNEL_NAME_KEYWORD in ch.name.lower():
+                channel = ch
+                break
         if not channel:
             print("⚠️ Catch channel not found.")
             return
@@ -248,14 +253,26 @@ class RocketCatch(commands.Cog):
 
     @app_commands.command(
         name="rocket-catch",
-        description="🚀 Launch a Team Rocket Pokémon catch event (Admins only)"
+        description="Launch a Team Rocket Pokémon catch event (Premium only)"
     )
     @admin_only()
     async def rocket_catch(self, interaction: discord.Interaction):
-        await interaction.response.send_message("🚀 Launching Team Rocket capture sequence...", ephemeral=True)
+        # Ensure invoked in a channel containing "catch"
+        if CATCH_CHANNEL_NAME_KEYWORD not in interaction.channel.name.lower():
+            await interaction.response.send_message(
+                "❌ This command can only be used in a channel with 'catch' in its name.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "🚀 Launching Team Rocket capture sequence...", ephemeral=True
+        )
         self.pokemon_data = await self.load_second_latest_json_from_channel()
         if not self.pokemon_data:
-            await interaction.followup.send("⚠️ No Pokémon data found in admin channel!", ephemeral=True)
+            await interaction.followup.send(
+                "⚠️ No Pokémon data found in admin channel!", ephemeral=True
+            )
             return
         self.pokemon_queue = self.pokemon_data.copy()
         random.shuffle(self.pokemon_queue)
@@ -264,13 +281,14 @@ class RocketCatch(commands.Cog):
     @rocket_catch.error
     async def on_catch_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.CheckFailure):
-            await interaction.response.send_message("❌ Only admins can launch this command!", ephemeral=True)
+            await interaction.response.send_message(
+                "🚫 Sorry, only Premium members can launch this command.\n"
+                "Visit RocketBot's official page to get Premium.",
+                ephemeral=True)
         else:
             await interaction.response.send_message(f"⚠️ Error: {error}", ephemeral=True)
 
-
-
-    # --- command group ---
+    # --- Pokémon Catch Leaderboard ---
     @commands.group(name="pc", invoke_without_command=True)
     async def pc_group(self, ctx):
         """Pokémon Catch group commands"""
@@ -285,17 +303,17 @@ class RocketCatch(commands.Cog):
 
         self._lb_running = True
         try:
-            CATCH_CHANNEL_ID = int(os.getenv("CATCH_CHANNEL_ID", 0))
-            channel = self.bot.get_channel(CATCH_CHANNEL_ID)
+            # Find the first channel containing "catch"
+            channel = None
+            for ch in self.bot.get_all_channels():
+                if isinstance(ch, discord.TextChannel) and CATCH_CHANNEL_NAME_KEYWORD in ch.name.lower():
+                    channel = ch
+                    break
             if not channel:
                 await ctx.send("⚠️ Catch channel not found.")
                 return
 
-            # Temporary calculating message
             temp_msg = await ctx.send("⏳ Calculating Pokémon Catch Leaderboard...")
-
-            from collections import defaultdict
-            import re
             counts = defaultdict(int)
             pattern = re.compile(r"💎\s*(\S+)")
 
@@ -309,23 +327,29 @@ class RocketCatch(commands.Cog):
                 return
 
             sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-            medals = ["🥇", "🥈", "🥉"]
 
             leaderboard_lines = [
-                f"{medals[i] if i < 3 else '🔹'} {name} — {score} 🎯"
+                f"{MEDALS[i] if i < 3 else '🔹'} {name} — {score} 🎯"
                 for i, (name, score) in enumerate(sorted_counts)
             ]
             leaderboard_text = "\n".join(leaderboard_lines)
 
             guild = ctx.guild
-            legendary_role = discord.utils.get(guild.roles, name="Legendary Catcher 🎯")
+            role_name = "Legendary Catcher 🎯"
+            legendary_role = discord.utils.get(guild.roles, name=role_name)
 
             top_name, top_score = sorted_counts[0]
             top_member = next(
-                (m for m in guild.members if
-                 m.display_name.lower() == top_name.lower() or m.name.lower() == top_name.lower()),
+                (m for m in guild.members if m.display_name.lower() == top_name.lower() or m.name.lower() == top_name.lower()),
                 None
             )
+
+            if not legendary_role:
+                legendary_role = await ctx.guild.create_role(
+                    name=role_name,
+                    colour=discord.Colour(0x3498DB),
+                    reason="Top Pokemon catcher"
+                )
 
             if legendary_role:
                 for member in legendary_role.members:
@@ -346,7 +370,7 @@ class RocketCatch(commands.Cog):
             )
             embed.set_footer(text="💫 Congratulations to all trainers — keep catching to claim the top spot!")
 
-            await temp_msg.delete()  # 🧹 Remove the "Calculating..." message
+            await temp_msg.delete()
             await ctx.send(embed=embed)
 
         except Exception as e:
