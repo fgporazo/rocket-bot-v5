@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from PIL import Image
 import aiohttp
 import io
-from helpers import (award_points)
+from helpers import award_points,check_main_guild
 
 load_dotenv()
 SUBMISSION_CHANNEL_ID = int(os.getenv("DRAWING_SUBMISSION_CHANNEL", 0))
@@ -144,8 +144,8 @@ class DateView:
         embed.set_footer(text="🎨 Jessie & James proudly present your art date 💕")
 
         await self.ctx.send(embed=embed, file=merged_file)
-        await award_points(self.ctx.bot, self.author, 25, notify_channel=self.ctx.channel)
-        await award_points(self.ctx.bot, self.target, 25, notify_channel=self.ctx.channel)
+        await award_points(self.ctx.bot, self.author, 15, notify_channel=self.ctx.channel)
+        await award_points(self.ctx.bot, self.target, 15, notify_channel=self.ctx.channel)
 
 class RocketDrawingDate(commands.Cog):
     def __init__(self, bot):
@@ -153,6 +153,10 @@ class RocketDrawingDate(commands.Cog):
 
     @commands.command(name="dd")
     async def dd(self, ctx, member: discord.Member = None):
+
+        if not await check_main_guild(ctx):
+            return  # stop execution if not in main server
+
         if not member:
             help_text = f"`.dd @username` - mention who you want to drawing date."
             await ctx.send(f"📖 **Team Rocket Drawing Date Commands Guide**\n{help_text}")
