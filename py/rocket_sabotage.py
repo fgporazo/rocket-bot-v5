@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import re
-from helpers import (award_points)
+from helpers import award_points,check_main_guild
 
 INVENTORY_CHANNEL_ID = int(os.getenv("INVENTORY_CHANNEL_ID", 0))
 LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID", 0))
@@ -169,6 +169,10 @@ class RocketSabotage(commands.Cog):
     # ------------------------
     @commands.command(aliases=["pb"],help="Show your Pokebag inventory and gems, or check another member's Pokebag (Shiled Viewing is private).")
     async def pokebag(self, ctx: commands.Context, member: discord.Member = None):
+
+        if not await check_main_guild(ctx):
+            return  # stop execution if not in main server
+
         await self.load_inventory()
         await self.load_leaderboard()
         target = member or ctx.author
@@ -185,6 +189,8 @@ class RocketSabotage(commands.Cog):
         )
         embed.set_thumbnail(url=POKEBAG_THUMBNAIL_URL)
         shop_channel = self.bot.get_channel(SHOP_PUBLIC_CHANNEL_ID)
+
+
         if shop_channel:
             embed.add_field(name="\n", value=f"🛒 Visit {shop_channel.mention} to buy items", inline=False)
         embed.add_field(name="\n", value=f"📖 Type `.pi` to show Poke Item (Sabotage Game) Commands Guide\n📖 Type `.pokebag` to show Poke Bag", inline=False)
@@ -202,6 +208,9 @@ class RocketSabotage(commands.Cog):
     # ------------------------
     @commands.group(name="pi", invoke_without_command=True)
     async def pokeitem(self, ctx):
+        if not await check_main_guild(ctx):
+            return  # stop execution if not in main server
+
         commands_list = [
             f"`.pi {m.name}` - {m.help or 'No description'}"
             for m in self.pokeitem.commands
@@ -213,6 +222,10 @@ class RocketSabotage(commands.Cog):
 
     @pokeitem.command(name="binocular",aliases=["bino", "james"],help="Use on a player to view their Pokebag items and Wobbuffet shields.")
     async def pi_binocular(self, ctx, member: discord.Member = None):
+
+        if not await check_main_guild(ctx):
+            return  # stop execution if not in main server
+
         if member is None:
             await ctx.send("❌ You need to mention a player to use the binocular.", ephemeral=True)
             return
@@ -239,6 +252,10 @@ class RocketSabotage(commands.Cog):
 
     @pokeitem.command(name="potion", aliases=["love", "love_potion","jessie"],help="Use to request a Team Rocket-assisted date setup.")
     async def pi_potion(self, ctx, member: discord.Member = None):
+
+        if not await check_main_guild(ctx):
+            return  # stop execution if not in main server
+
         if not await self.check_and_deduct(ctx, "💖", "Jessie's Love Potion"):
             return
         team_rocket_role = discord.utils.get(ctx.guild.roles, name="TEAM ROCKET")
@@ -251,6 +268,10 @@ class RocketSabotage(commands.Cog):
 
     @pokeitem.command(name="vacuum",aliases=["vac", "meowth"], help="Use to steal 20% of another player's gems (fails if they have Wobbuffet Shield).")
     async def pi_vacuum(self, ctx, member: discord.Member = None):
+
+        if not await check_main_guild(ctx):
+            return  # stop execution if not in main server
+
         if member is None:
             await ctx.send("❌ You need to mention a player to use the vacuum.", ephemeral=True)
             return
@@ -325,6 +346,9 @@ class RocketSabotage(commands.Cog):
     )
     @commands.cooldown(rate=20, per=300, type=commands.BucketType.user)
     async def pi_gems(self, ctx: commands.Context):
+
+
+
         rocket_shop_cog = self.bot.get_cog("RocketShop")
         if not rocket_shop_cog:
             return await safe_send(ctx, "⚠️ RocketShop cog is not loaded.")
