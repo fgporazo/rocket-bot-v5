@@ -158,49 +158,30 @@ class RocketSlash(commands.Cog):
                             continue
         return None
 
-    # ----------------- Rocket List -----------------
-    @app_commands.command(name="rocket-list", description="Show Rocket Bot menu (Admins only).")
-    async def rocket_list(self, interaction: discord.Interaction):
-        if not is_admin(interaction.user):
-            return await interaction.response.send_message("🚫 Only admins can use this command.", ephemeral=True)
-
-        data = await self.fetch_latest_json()
-        if not data:
-            return await interaction.response.send_message("⚠️ Could not find any JSON file in the admin channel.", ephemeral=True)
-
-        sections = data.get("sections", [])
-        for idx, section in enumerate(sections):
-            embed = discord.Embed(
-                title=section.get("title", "🚀 Rocket Bot"),
-                description=section.get("description", ""),
-                color=discord.Color.blurple()
-            )
-            view = RocketListView(self.bot, section)
-            if idx == 0:
-                await interaction.response.send_message(embed=embed, view=view)
-            else:
-                await interaction.followup.send(embed=embed, view=view)
 
     # ----------------- Rocket Members -----------------
-    @app_commands.command(name="rocket-members", description="👥 View Team Rocket Admin")
-    async def rocket_members(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="Team Rocket Admin",
-                              description="Meet the chaos crew behind the scenes! 💥",
-                              color=0xFFFACD)
-        embed.add_field(name="1️⃣ Jessie (Cin)", value="💄 Queen of Chaotic Capers", inline=False)
-        embed.add_field(name="2️⃣ James (Layli)", value="🌻 Chaos Catalyst of Digital", inline=False)
-        embed.add_field(name="3️⃣ Meowth (Joa)", value="😼 Official Translator & Mischief Manager", inline=False)
-        await interaction.response.send_message(embed=embed)
+    # @app_commands.command(name="rocket-members", description="👥 View Team Rocket Admin")
+    # async def rocket_members(self, interaction: discord.Interaction):
+    #     embed = discord.Embed(title="Team Rocket Admin",
+    #                           description="Meet the chaos crew behind the scenes! 💥",
+    #                           color=0xFFFACD)
+    #     embed.add_field(name="1️⃣ Jessie (Cin)", value="💄 Queen of Chaotic Capers", inline=False)
+    #     embed.add_field(name="2️⃣ James (Layli)", value="🌻 Chaos Catalyst of Digital", inline=False)
+    #     embed.add_field(name="3️⃣ Meowth (Joa)", value="😼 Official Translator & Mischief Manager", inline=False)
+    #     await interaction.response.send_message(embed=embed)
 
     # ----------------- Rocket Gems -----------------
-    @app_commands.command(name="rocket-gems", description="Award or remove gems from a user (Admin only).")
+    @app_commands.command(name="rocket-gems", description="Award or remove gems from a player (Premium only)")
     @app_commands.describe(
         member="The user to award or deduct gems from",
         gems="Number of gems (positive to add, negative to subtract)"
     )
     async def rocket_gems(self, interaction: discord.Interaction, member: discord.Member, gems: int):
         if not is_admin(interaction.user):
-            return await interaction.response.send_message("🚫 Only admins can use this command.", ephemeral=True)
+            return await interaction.response.send_message(
+                "🚫 Sorry, only Premium members can launch this command.\n"
+                "Visit RocketBot's official page to get Premium.",
+                ephemeral=True)
 
         if gems == 0:
             return await interaction.response.send_message("⚠️ Gems cannot be 0.", ephemeral=True)
@@ -216,18 +197,18 @@ class RocketSlash(commands.Cog):
     # ----------------- Rocket Elites -----------------
     @app_commands.command(
         name="rocket-elites",
-        description="Announce the top 10 E-Games scorers 🚀"
+        description="Launch the top 10 Rocket Elites (Top Gem Scorer)"
     )
     async def rocket_elites(self, interaction: discord.Interaction):
         try:
-            # Make it a public announcement
+            # Public announcement
             await interaction.response.defer(ephemeral=False)
 
             channel = self.bot.get_channel(LEADERBOARD_CHANNEL_ID)
             if not channel:
                 return await interaction.followup.send("⚠️ Leaderboard channel not found.")
 
-            # --- Fetch latest message ---
+            # Fetch latest message
             msg = None
             async for m in channel.history(limit=5, oldest_first=False):
                 if m.content:
@@ -237,7 +218,7 @@ class RocketSlash(commands.Cog):
             if not msg:
                 return await interaction.followup.send("⚠️ No leaderboard message found.")
 
-            # --- Parse leaderboard ---
+            # Parse leaderboard
             leaderboard = []
             for line in msg.content.splitlines():
                 parts = [p.strip() for p in line.split("-")]
@@ -254,29 +235,30 @@ class RocketSlash(commands.Cog):
             if not leaderboard:
                 return await interaction.followup.send("⚠️ Leaderboard is empty or malformed.")
 
-            # --- Sort by points descending and keep top 10 ---
+            # Sort by points descending, keep top 10
             leaderboard.sort(key=lambda x: x[2], reverse=True)
             leaderboard = leaderboard[:10]
 
             guild = interaction.guild
             lines = []
 
-            # Add title
             lines.append("# 🎖️ TOP 🔟 ROCKET ELITES 🎖️\n")
 
             for idx, (name, uid, points) in enumerate(leaderboard):
-                try:
-                    member = guild.get_member(uid) if guild else None
-                    mention = member.mention if member else name
-                except Exception:
-                    mention = name
+                member = guild.get_member(uid) if guild else None
+                # Only announce if member is still in the server
+                if not member:
+                    continue
 
+                mention = member.mention
                 medal = ["🥇", "🥈", "🥉"][idx] if idx < 3 else "🏅"
                 number_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][idx]
 
-                # Add ## only to top 1
                 prefix = "## " if idx == 0 else ""
                 lines.append(f"{prefix}{number_emoji}  {medal} {mention} — 💎 {points}")
+
+            if not lines[1:]:
+                return await interaction.followup.send("⚠️ No top members are currently in the server.")
 
             final_message = "\n".join(lines)
             await interaction.followup.send(final_message)
