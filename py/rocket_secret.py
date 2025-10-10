@@ -1,5 +1,3 @@
-# rocket_secret.py
-import os
 import discord
 from discord.ext import commands
 import random
@@ -7,12 +5,10 @@ from datetime import datetime
 import re
 import asyncio
 from helpers import award_points
-
+import os
 # ----------------------
-# Config / Environment
+# Config
 # ----------------------
-SECRET_ADMIRER_CHANNEL_ID = int(os.getenv("SECRET_ADMIRER_CHANNEL_ID", 0))
-
 COOLDOWN_SECONDS = 60  # 1 minute between confessions
 MAX_DAILY = 3  # max confessions per day
 MAX_SIZE_MB = 5  # max attachment size
@@ -67,12 +63,12 @@ def increment_daily(user_id: int):
     user_daily_count[user_id]["count"] += 1
 
 def extract_image_url_from_text(text: str) -> str | None:
-    # Search for any URL ending with valid image extension
     urls = re.findall(r"https?://\S+", text)
     for url in urls:
         if url.lower().endswith(IMAGE_EXTENSIONS):
             return url
     return None
+
 
 # ----------------------
 # Secret Admirer Cog
@@ -80,6 +76,13 @@ def extract_image_url_from_text(text: str) -> str | None:
 class SecretAdmirer(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    # Helper to find a “secret” channel automatically
+    def find_secret_channel(self, guild: discord.Guild):
+        for ch in guild.text_channels:
+            if "secret" in ch.name.lower():
+                return ch
+        return None
 
     # ----------------------
     # Main command group
@@ -148,9 +151,7 @@ class SecretAdmirer(commands.Cog):
             await self.choose_title(ctx, confession)
 
         async def own_callback(interaction: discord.Interaction):
-            await interaction.response.send_message(
-                "✏️ Okay! Let’s craft your custom message.", ephemeral=True
-            )
+            await interaction.response.send_message("✏️ Okay! Let’s craft your custom message.", ephemeral=True)
             await self.prompt_custom_message(ctx)
 
         help_btn = discord.ui.Button(label="Let Team Rocket Help 🎲", style=discord.ButtonStyle.primary)
@@ -166,9 +167,7 @@ class SecretAdmirer(commands.Cog):
     # Prompt custom message
     # ----------------------
     async def prompt_custom_message(self, ctx):
-        await ctx.send(
-            f"✏️ Type your custom message now (or attach 1 image/GIF).\n⚠️ Max {MAX_WORDS} words, {MAX_SIZE_MB}MB."
-        )
+        await ctx.send(f"✏️ Type your custom message now (or attach 1 image/GIF).\n⚠️ Max {MAX_WORDS} words, {MAX_SIZE_MB}MB.")
 
         def check(m):
             return m.author == ctx.author and isinstance(m.channel, discord.DMChannel)
@@ -190,11 +189,9 @@ class SecretAdmirer(commands.Cog):
                 return await ctx.send(f"⚠️ File too large. Maximum allowed is {MAX_SIZE_MB} MB.")
             image_url = attachment.url
         else:
-            # Check for any image URL in message
             found_url = extract_image_url_from_text(message_text)
             if found_url:
                 image_url = found_url
-                # Remove URL from text if it's the only thing
                 if message_text.strip() == found_url:
                     message_text = "[Image only]"
 
@@ -246,8 +243,6 @@ class SecretAdmirer(commands.Cog):
             return await ctx.send("⚠️ Go to the Secret channel and click the Secret Notes button to get started.")
 
         image_url = None
-
-        # Attachment takes priority
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.content_type not in ALLOWED_TYPES:
@@ -256,7 +251,6 @@ class SecretAdmirer(commands.Cog):
                 return await ctx.send(f"⚠️ File too large. Maximum allowed is {MAX_SIZE_MB} MB.")
             image_url = attachment.url
 
-        # Extract image URL from message anywhere
         if message:
             found_url = extract_image_url_from_text(message)
             if found_url:
@@ -302,28 +296,126 @@ class SecretAdmirer(commands.Cog):
         if not guild:
             return await ctx.send("⚠️ Could not find the server session. Try `.secret` again.")
 
-        channel = guild.get_channel(SECRET_ADMIRER_CHANNEL_ID)
+        # 🔍 Find the first text channel that includes “secret” in its name
+        channel = self.find_secret_channel(guild)
         if not channel:
-            return await ctx.send("⚠️ Secret channel not found. Please check configuration.")
+            return await ctx.send("⚠️ Couldn’t find any text channel with 'secret' in its name.")
 
-        embed = discord.Embed(title=embed_title, description=f"***Dear*** {receiver}\n\n*{message_text}*", color=discord.Color.pink())
+        embed = discord.Embed(
+            title=embed_title,
+            description=f"***Dear*** {receiver}\n\n*{message_text}*",
+            color=discord.Color.pink()
+        )
         if image_url:
             embed.set_thumbnail(url=image_url)
         else:
             embed.set_thumbnail(url=random.choice(GIFS))
 
         await channel.send(embed=embed)
-
         await ctx.send(f"✅ Your message has been sent anonymously to {channel.mention}!\n💫 Check it out there!")
 
         try:
             reward_amount = 55
-            await ctx.author.send(f"🎉 Congratulations! You’ve earned ** 💎 {reward_amount} gems** for bravely sending a Secret Message 💖🚀")
+            await ctx.author.send(
+                f"🎉 Congratulations! You’ve earned **💎 {reward_amount} gems** for bravely sending a Secret Message 💖🚀"
+            )
             await award_points(self.bot, ctx.author, reward_amount, dm=True)
         except discord.Forbidden:
             print(f"[WARN] Could not DM user {ctx.author.id} their gem reward.")
 
         del sessions[ctx.author.id]
+
+    # ----------------------
+    # /secret command
+    # ----------------------
+    @commands.hybrid_command(name="rocket-secret-notes", description="Launch a Secret note event (Premium only).")
+    async def rocket_secret_notes(self, ctx: commands.Context):
+        """Announces the Notes panel with a Send Notes button."""
+
+        # ✅ Ensure the command is used in a text channel (not DM)
+        if isinstance(ctx.channel, discord.DMChannel):
+            await ctx.send("⚠️ This command can only be used inside a server channel.")
+            return
+
+        # ✅ Check if inside a channel with "secret" in its name
+        if "secret" not in ctx.channel.name.lower():
+            await ctx.send(
+                "❌ This command can only be used in a channel with 'secret' in its name."
+            )
+            return
+
+        # ✅ Check if user is a premium member
+        gold_channel_id = os.getenv("ADMIN_GOLD_MEMBERS")
+        gold_member_ids = set()
+
+        if gold_channel_id:
+            gold_channel = self.bot.get_channel(int(gold_channel_id))
+            if gold_channel:
+                try:
+                    async for msg in gold_channel.history(limit=100):
+                        # expect messages like: "1234567890 | username"
+                        parts = msg.content.split("|")
+                        if parts:
+                            uid_str = parts[0].strip()
+                            if uid_str.isdigit():
+                                gold_member_ids.add(int(uid_str))
+                except Exception as e:
+                    print(f"[WARN] Error fetching gold members: {e}")
+
+        # ⚠️ FIX: in discord.py, use ctx.author, not ctx.member
+        if ctx.author.id not in gold_member_ids:
+            await ctx.send(
+                f"🚫 Sorry {ctx.author.mention}, only **Gold Members** can use this command.\n"
+                "Visit RocketBot’s official page to get Premium access.",
+                delete_after=8
+            )
+            return
+
+        # ✅ Build the embed
+        embed = discord.Embed(
+            title="💌 Notes",
+            description=(
+                "Discover connections your way! Send greetings, postcards, love letters, "
+                "or confessions with 💌 **Send Notes**"
+            ),
+            color=discord.Color.pink()
+        )
+        embed.set_footer(text="Powered by Team Rocket ✨")
+
+        # --- create the button view ---
+        view = discord.ui.View()
+
+        class SendNotesButton(discord.ui.Button):
+            def __init__(self):
+                super().__init__(label="💌 Send Notes +55 💎", style=discord.ButtonStyle.primary)
+
+            async def callback(self, interaction: discord.Interaction):
+                """Simulate triggering the .secret command flow"""
+                user = interaction.user
+
+                # Store their guild ID in session
+                sessions[user.id] = interaction.guild.id
+
+                try:
+                    await user.send(
+                        "👋 Hi! This is Team Rocket.\n"
+                        "You’re about to send a secret note! 💌\n\n"
+                        "👉 Type `.secret start` here in DM to begin.\n"
+                        "👉 Or use `.secret custom <message>` to send your own custom message directly.\n\n"
+                        "📎 You can attach 1 image or GIF.\n"
+                        f"⚠️ Maximum {MAX_WORDS} words per message.\n"
+                        "💎 You’ll earn **+55 Gems** for sending one!"
+                    )
+                    await interaction.response.send_message("📨 Check your DMs — Team Rocket is ready!", ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.response.send_message(
+                        "⚠️ I can’t DM you! Please enable Direct Messages from server members and try again.",
+                        ephemeral=True
+                    )
+
+        view.add_item(SendNotesButton())
+
+        await ctx.send(embed=embed, view=view)
 
 # ----------------------
 # Setup
