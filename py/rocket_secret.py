@@ -73,9 +73,10 @@ def extract_image_url_from_text(text: str) -> str | None:
 # ----------------------
 # Secret Admirer Cog
 # ----------------------
-class SecretAdmirer(commands.Cog):
+class SecretNotes(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._gold_member_cache = set()
 
     # Helper to find a “secret” channel automatically
     def find_secret_channel(self, guild: discord.Guild):
@@ -84,6 +85,40 @@ class SecretAdmirer(commands.Cog):
                 return ch
         return None
 
+    async def is_premium_member(self, user_id: int) -> bool:
+        """Check if a user is a Premium Member."""
+        # If we already have cached IDs, just check
+        if self._gold_member_cache:
+            return user_id in self._gold_member_cache
+
+        gold_channel_id = os.getenv("ADMIN_GOLD_MEMBERS")
+        if not gold_channel_id:
+            return False  # no gold channel configured
+
+        try:
+            # Try cached channel first
+            gold_channel = self.bot.get_channel(int(gold_channel_id))
+            if not gold_channel:
+                # Fetch from Discord API if not cached
+                gold_channel = await self.bot.fetch_channel(int(gold_channel_id))
+
+            if not gold_channel:
+                print(f"⚠️ Could not find gold-members channel with ID {gold_channel_id}")
+                return False
+
+            # Fetch all history to populate cache
+            async for msg in gold_channel.history(limit=None):  # None fetches all messages
+                parts = msg.content.split("|")
+                if parts:
+                    uid_str = parts[0].strip()
+                    if uid_str.isdigit():
+                        self._gold_member_cache.add(int(uid_str))
+
+            return user_id in self._gold_member_cache
+
+        except Exception as e:
+            print(f"⚠️ Error reading gold members: {e}")
+            return False
     # ----------------------
     # Main command group
     # ----------------------
@@ -345,32 +380,7 @@ class SecretAdmirer(commands.Cog):
             return
 
         # ✅ Check if user is a premium member
-        gold_channel_id = os.getenv("ADMIN_GOLD_MEMBERS")
-        gold_member_ids = set()
-
-        if gold_channel_id:
-            try:
-                gold_channel = self.bot.get_channel(int(gold_channel_id))
-                if not gold_channel:
-                    # fallback: fetch the channel directly if not cached
-                    gold_channel = await self.bot.fetch_channel(int(gold_channel_id))
-
-                if gold_channel:
-                    async for msg in gold_channel.history(limit=100):
-                        # expect messages like: "1234567890 | username"
-                        parts = msg.content.split("|")
-                        if parts:
-                            uid_str = parts[0].strip()
-                            if uid_str.isdigit():
-                                gold_member_ids.add(int(uid_str))
-                else:
-                    print(f"⚠️ Could not find gold-members channel with ID {gold_channel_id}")
-
-            except Exception as e:
-                print(f"⚠️ Error reading gold members: {e}")
-
-        # ⚠️ FIX: in discord.py, use ctx.author, not ctx.member
-        if ctx.author.id not in gold_member_ids:
+        if not await self.is_premium_member(ctx.author.id):
             await ctx.send(
                 f"🚫 Sorry {ctx.author.mention}, only **Premium Members** can use this command.\n"
                 "Visit RocketBot’s official page to get Premium access.",
@@ -428,4 +438,4 @@ class SecretAdmirer(commands.Cog):
 # Setup
 # ----------------------
 async def setup(bot):
-    await bot.add_cog(SecretAdmirer(bot))
+    await bot.add_cog(SecretNotes(bot))
