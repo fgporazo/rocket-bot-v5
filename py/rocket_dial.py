@@ -497,35 +497,35 @@ class RocketDial(commands.Cog):
         # Mark unveiled for message display
         call_info["revealed_users"].add(ctx.author.id)
 
-    # ----------------------------
+    # ---------------------------
     # .rd report / .rdr
-    # ----------------------------
+    # ---------------------------
     @rd.command(name="report", aliases=["rdr"])
     async def rd_report(self, ctx: commands.Context, *, reason: str = "No reason provided"):
         import datetime, os
-    
+
         today = datetime.date.today()
         if self.report_reset_day != today:
             self.user_reports.clear()
             self.report_reset_day = today
-    
+
         guild_id = str(ctx.guild.id)
         call_info = self.calls.get(guild_id)
         if not call_info:
             return await ctx.send("⚠️ You are not in an active Rocket Dial call.")
-    
+
         # Partner info
         partner_guild_id = call_info.get("partner")
         partner_call_info = self.calls.get(str(partner_guild_id))
         if not partner_call_info:
             return await ctx.send("⚠️ Cannot find the member on the other server.")
-    
+
         reporter = ctx.author
         reporter_id = reporter.id
-    
+
         # Track warned messages to avoid duplicates
         warned_set = self.user_reports.setdefault(reporter_id, set())
-    
+
         # -------------------------------
         # Check initiators (only original initiators can file reports)
         # -------------------------------
@@ -536,21 +536,21 @@ class RocketDial(commands.Cog):
             return await ctx.send(
                 f"⚠️ You are not one of the original initiators. Only the two who started this call can report. ({mention})"
             )
-    
+
         # Determine reported member id and alias
         partner_member_id = partner_call_info.get("caller_member_id")
         if not partner_member_id:
             return await ctx.send(
                 "⚠️ Cannot report this member because their identity could not be verified."
             )
-    
+
         user_aliases = partner_call_info.get("user_aliases", {})
         reported_alias = next(iter(user_aliases.values()))["name"] if user_aliases else "Unknown Pokémon"
-    
+
         # Sanitize reason
         reason = (reason or "No reason provided").strip()
         reason = reason.replace("|", "/")  # avoid breaking the format
-    
+
         # -------------------------------
         # Admin channels
         # -------------------------------
@@ -560,14 +560,14 @@ class RocketDial(commands.Cog):
             reporter_channel_id = int(os.environ.get("ADMIN_REPORTER_MEMBERS", 0))
         except Exception:
             return await ctx.send("⚠️ Admin channels not configured properly.")
-    
+
         main_guild = self.bot.get_guild(main_guild_id)
         if not main_guild:
             return await ctx.send("⚠️ Main guild not found.")
-    
+
         reported_channel = main_guild.get_channel(reported_channel_id) if main_guild else None
         reporter_channel = main_guild.get_channel(reporter_channel_id) if main_guild else None
-    
+
         # -------------------------------
         # Check reporter max reports
         # -------------------------------
@@ -581,14 +581,14 @@ class RocketDial(commands.Cog):
                         break
             except Exception:
                 pass
-    
+
         # Prevent duplicate max-report message
         if reporter_count >= 3:
             if "max_report_warned" not in warned_set:
                 await ctx.send("⚠️ You have reached the maximum number of reports (3).")
                 warned_set.add("max_report_warned")
             return
-    
+
         # -------------------------------
         # Update reported member record
         # -------------------------------
@@ -614,7 +614,7 @@ class RocketDial(commands.Cog):
                         f"{partner_member_id} | {reported_alias} | {reported_count}x | {reason}")
             except Exception as e:
                 print(f"[rd_report] Failed updating reported channel: {e}")
-    
+
         # -------------------------------
         # Update reporter record
         # -------------------------------
@@ -635,7 +635,7 @@ class RocketDial(commands.Cog):
                     await reporter_channel.send(f"{reporter_id} | {reporter.display_name} | {reporter_count}x")
             except Exception as e:
                 print(f"[rd_report] Failed updating reporter channel: {e}")
-    
+
         # -------------------------------
         # Confirm & hangup
         # -------------------------------
