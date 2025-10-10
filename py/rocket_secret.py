@@ -349,9 +349,13 @@ class SecretAdmirer(commands.Cog):
         gold_member_ids = set()
 
         if gold_channel_id:
-            gold_channel = self.bot.get_channel(int(gold_channel_id))
-            if gold_channel:
-                try:
+            try:
+                gold_channel = self.bot.get_channel(int(gold_channel_id))
+                if not gold_channel:
+                    # fallback: fetch the channel directly if not cached
+                    gold_channel = await self.bot.fetch_channel(int(gold_channel_id))
+
+                if gold_channel:
                     async for msg in gold_channel.history(limit=100):
                         # expect messages like: "1234567890 | username"
                         parts = msg.content.split("|")
@@ -359,13 +363,16 @@ class SecretAdmirer(commands.Cog):
                             uid_str = parts[0].strip()
                             if uid_str.isdigit():
                                 gold_member_ids.add(int(uid_str))
-                except Exception as e:
-                    print(f"[WARN] Error fetching gold members: {e}")
+                else:
+                    print(f"⚠️ Could not find gold-members channel with ID {gold_channel_id}")
+
+            except Exception as e:
+                print(f"⚠️ Error reading gold members: {e}")
 
         # ⚠️ FIX: in discord.py, use ctx.author, not ctx.member
         if ctx.author.id not in gold_member_ids:
             await ctx.send(
-                f"🚫 Sorry {ctx.author.mention}, only **Gold Members** can use this command.\n"
+                f"🚫 Sorry {ctx.author.mention}, only **Premium Members** can use this command.\n"
                 "Visit RocketBot’s official page to get Premium access.",
                 delete_after=8
             )
