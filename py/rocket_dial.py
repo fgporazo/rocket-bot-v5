@@ -177,7 +177,7 @@ class RocketDial(commands.Cog):
             return 0
         if not reported_channel_id:
             return 0
-        main_guild_id = int(os.environ.get("MAIN_GUILD", 0)) if os.environ.get("MAIN_GUILD") else 0
+        main_guild_id = int(os.environ.get("MY_MAIN_GUILD", 0)) if os.environ.get("MY_MAIN_GUILD") else 0
         if not main_guild_id:
             return 0
         main_guild = self.bot.get_guild(main_guild_id)
@@ -554,7 +554,7 @@ class RocketDial(commands.Cog):
         # Admin channels
         # -------------------------------
         try:
-            main_guild_id = int(os.environ.get("MAIN_GUILD", 0))
+            main_guild_id = int(os.environ.get("MY_MAIN_GUILD", 0))
             reported_channel_id = int(os.environ.get("ADMIN_REPORTED_MEMBERS", 0))
             reporter_channel_id = int(os.environ.get("ADMIN_REPORTER_MEMBERS", 0))
         except Exception:
@@ -822,7 +822,10 @@ class RocketDial(commands.Cog):
                         pass
                     try:
                         await message.channel.send(
-                            f"🚫 {member.mention}, only Gold Members can send Tenor GIFs.", delete_after=8
+                            f"🚫 Sorry {member.mention}, only Premium members can send Tenor GIFs.\n"
+                            "Visit RocketBot's official page to get Premium.",
+                            delete_after=8
+
                         )
                     except Exception:
                         pass
