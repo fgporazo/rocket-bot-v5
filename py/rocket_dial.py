@@ -383,6 +383,20 @@ class RocketDial(commands.Cog):
             except Exception:
                 pass
 
+            # --- Announce connected server if MAIN_GUILD ---
+            try:
+                main_guild_id = int(os.getenv("MY_MAIN_GUILD", 0))
+                this_guild = ctx.guild
+                other_guild = self.bot.get_guild(int(other_gid))
+                if this_guild.id == main_guild_id and other_guild:
+                    await ctx.send(f"🌐 You are connected with **{other_guild.name}**.")
+                elif other_guild and other_guild.id == main_guild_id:
+                    ch = self.find_dial_channel(other_guild)
+                    if ch:
+                        await ch.send(f"🌐 You are connected with **{this_guild.name}**.")
+            except Exception as e:
+                print(f"[RocketDial] announce connected server error: {e}")
+
             # Warn if partner had 1-2 reports
             if waiting_initiator_id:
                 waiting_count = await self.get_report_count(waiting_initiator_id)
@@ -664,7 +678,7 @@ class RocketDial(commands.Cog):
         # -------------------------------
         if "report_confirmed" not in warned_set:
             await ctx.send(
-                f"🚨 You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)\n"
+                f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)\n"
                 "📞 Call disconnected.\n"
             )
             warned_set.add("report_confirmed")
