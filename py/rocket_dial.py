@@ -49,9 +49,11 @@ class RocketDial(commands.Cog):
         # remember which member started a waiting call (so both sides are initiators)
         self.waiting_initiator: Dict[str, int] = {}
         # used to avoid spamming warning messages per user per call
-        # report tracking
         self.user_reports: Dict[int, int] = {}
         self.report_reset_day: Optional[datetime.date] = None
+
+        # lock to prevent race conditions when pairing waiting callers
+        self.wait_lock = asyncio.Lock()
 
         self.answer_timeout = 30
         self.idle_timeout = 30 * 60  # 30 minutes default idle
@@ -86,18 +88,23 @@ class RocketDial(commands.Cog):
         # return entries matching structure used elsewhere: {"name": ..., "url": ...}
         return {"name": a["name"], "url": a["url"]}, {"name": b["name"], "url": b["url"]}
 
-    async def get_or_create_webhook(self, channel: discord.TextChannel, name: str):
+    async def get_or_create_webhook(self, channel: discord.TextChannel, guild_id: int):
+        """
+        Ensure each guild has one unique webhook named 'Rocket Dial - {guild_id}'.
+        This is NOT a 'friend request' webhook — it's the per-server webhook used
+        for all forwarded messages and friend requests (sent via alias/avatar).
+        """
+        name = f"Rocket Dial - {guild_id}"
         try:
             existing_webhooks = await channel.webhooks()
             for wh in existing_webhooks:
-                # prefer a webhook created by the bot if available
                 if wh.user == self.bot.user and wh.name == name:
                     return wh
-            # else create new
             wh = await channel.create_webhook(name=name)
+            #print(f"[RocketDial] Created webhook '{name}' in channel {channel.name} ({channel.id}) -> {getattr(wh, 'url', 'no-url')}")
             return wh
         except discord.Forbidden:
-            print(f"[DEBUG] No permission to create webhook in {channel.name}")
+            #print(f"[RocketDial] No permission to create webhook in {channel.name}")
             return None
         except Exception as e:
             print(f"[RocketDial] get_or_create_webhook error: {e}")
@@ -122,8 +129,6 @@ class RocketDial(commands.Cog):
         Notifies only the other side once.
         Fully prevents duplicate notifications even in async races.
         """
-
-        # Use a set to track calls that are ending
         if not hasattr(self, "_ending_calls"):
             self._ending_calls = set()
 
@@ -138,7 +143,7 @@ class RocketDial(commands.Cog):
                 self.active_pairs.pop(str(partner), None)
             info_b = self.calls.pop(str(partner), None) if partner else None
 
-            # Cancel idle monitor & delete webhooks
+            # Cancel idle monitor & delete webhooks (ensure both sides cleaned up)
             for info in [info_a, info_b]:
                 if info and info.get("idle_task"):
                     try:
@@ -198,12 +203,10 @@ class RocketDial(commands.Cog):
 
         try:
             async for msg in channel.history(limit=500):
-                # guard against empty or unexpected formats
                 parts = msg.content.split("|")
                 if not parts:
                     continue
                 if parts[0].strip() == str(user_id):
-                    # parts[2] expected like "1x" or "2x" or "3x"
                     if len(parts) > 2:
                         try:
                             count_token = parts[2].strip()
@@ -284,8 +287,8 @@ class RocketDial(commands.Cog):
             await ctx.send(
                 f"⚠️ You have {caller_report_count} report(s) on record. Please behave properly; you can still start the call.")
 
-        # Create/get webhook
-        webhook = await self.get_or_create_webhook(ctx.channel, f"Rocket Dial - Friend Request")
+        # Create/get per-guild webhook (this is the guild's own webhook used for the call)
+        webhook = await self.get_or_create_webhook(ctx.channel, ctx.guild.id)
         if webhook is None:
             return await ctx.send("⚠️ I need 'Manage Webhooks' permission to start Rocket Dial.")
 
@@ -294,33 +297,43 @@ class RocketDial(commands.Cog):
             "📞 **Dialing...**\n🚀 Waiting for another server to pick up. Call will auto-hangup in 30 seconds if unanswered."
         )
 
-        # Look for waiting partner
+        # Find a waiting partner safely with a lock to avoid races
         partner_entry = None
-        for other_gid, (o_channel, o_webhook, o_task) in list(self.waiting_calls.items()):
-            if other_gid == guild_id:
-                continue
-            waiting_initiator_id = self.waiting_initiator.get(other_gid)
-            # Skip banned partners
-            if waiting_initiator_id and await self.get_report_count(waiting_initiator_id) >= 3:
-                try:
-                    _, wh, t = self.waiting_calls.pop(other_gid)
-                    t.cancel()
-                    await self.safe_delete_webhook(wh)
-                except Exception:
-                    pass
-                self.waiting_initiator.pop(other_gid, None)
-                continue
-            partner_entry = (other_gid, o_channel, o_webhook, o_task)
-            break
+        async with self.wait_lock:
+            for other_gid, (o_channel, o_webhook, o_task) in list(self.waiting_calls.items()):
+                if other_gid == guild_id:
+                    continue
+                waiting_initiator_id = self.waiting_initiator.get(other_gid)
+                # Skip banned partners
+                if waiting_initiator_id and await self.get_report_count(waiting_initiator_id) >= 3:
+                    try:
+                        _, wh, t = self.waiting_calls.pop(other_gid)
+                        t.cancel()
+                        await self.safe_delete_webhook(wh)
+                    except Exception:
+                        pass
+                    self.waiting_initiator.pop(other_gid, None)
+                    continue
+                partner_entry = (other_gid, o_channel, o_webhook, o_task)
+                break
 
+            # If partner found, remove it atomically (we'll pair after releasing lock)
+            if partner_entry:
+                other_gid = partner_entry[0]
+                if other_gid in self.waiting_calls:
+                    try:
+                        _, _, other_task = self.waiting_calls[other_gid]
+                        try:
+                            other_task.cancel()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    del self.waiting_calls[other_gid]
+
+        # If partner found → connect immediately
         if partner_entry:
-            # Partner found → connect immediately
             other_gid, other_channel, other_webhook, other_task = partner_entry
-            try:
-                other_task.cancel()
-            except Exception:
-                pass
-            del self.waiting_calls[other_gid]
 
             # Pick aliases
             alias_a, alias_b = self.pick_two_unique_aliases()
@@ -333,6 +346,7 @@ class RocketDial(commands.Cog):
                 initiators.add(waiting_initiator_id)
 
             # Assign calls and active pairs
+            # Each side stores its own webhook (webhook for this guild, other_webhook for partner)
             self.calls[guild_id] = {
                 "partner": other_gid,
                 "webhook": webhook,
@@ -392,7 +406,7 @@ class RocketDial(commands.Cog):
                 del self.waiting_initiator[other_gid]
             return
 
-        # No partner → start countdown
+        # No partner → start countdown and add to waiting_calls under lock
         async def precall_countdown_and_cleanup():
             try:
                 for remaining in range(self.answer_timeout, 0, -5):
@@ -428,8 +442,16 @@ class RocketDial(commands.Cog):
                 print(f"[RocketDial] precall_countdown_and_cleanup error: {e}")
 
         auto_task = asyncio.create_task(precall_countdown_and_cleanup())
-        self.waiting_calls[guild_id] = (ctx.channel, webhook, auto_task)
-        self.waiting_initiator[guild_id] = caller_member_id
+        async with self.wait_lock:
+            # double-check we haven't been paired while preparing task
+            if guild_id not in self.waiting_calls and guild_id not in self.calls:
+                self.waiting_calls[guild_id] = (ctx.channel, webhook, auto_task)
+                self.waiting_initiator[guild_id] = caller_member_id
+            else:
+                try:
+                    auto_task.cancel()
+                except Exception:
+                    pass
 
     # ---------------------------
     # rd hangup
@@ -463,6 +485,7 @@ class RocketDial(commands.Cog):
         )
 
         return await ctx.send("📞 You hung up the Rocket Dial call. Call ended.")
+
     # ---------------------------
     # rd unveil
     # ---------------------------
@@ -642,7 +665,7 @@ class RocketDial(commands.Cog):
         if "report_confirmed" not in warned_set:
             await ctx.send(
                 f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)\n"
-                "📞Call disconnected.\n"
+                "📞 Call disconnected.\n"
             )
             warned_set.add("report_confirmed")
 
@@ -660,7 +683,12 @@ class RocketDial(commands.Cog):
     # .rd friend / .rdfr
     # ---------------------------
     @rd.command(name="friend", aliases=["rdfr"])
-    async def rd_friend(self, ctx: commands.Context):
+    async def rd_friend(self, ctx: commands.Context, *, message: str = None):
+        """
+        Send a friend request to the other caller using the caller's alias/avatar via the
+        existing per-guild webhook. No new webhooks are created.
+        Optional 'message' text may be included after the command.
+        """
         guild_id = str(ctx.guild.id)
         call_info = self.calls.get(guild_id)
 
@@ -673,16 +701,39 @@ class RocketDial(commands.Cog):
         if not partner_call_info:
             return await ctx.send("⚠️ Cannot find the member on the other server.")
 
-        sender_user = ctx.author
-        sender_discord_tag = str(sender_user)  # Username#1234
-
         partner_webhook = partner_call_info.get("webhook")
         if not partner_webhook:
             return await ctx.send("⚠️ Cannot send friend request. Partner webhook not found.")
 
+        sender_user = ctx.author
+        sender_discord_tag = str(sender_user)  # Username#1234
+
+        # Use alias (from caller's own call_info) and avatar URL (alias url)
+        alias_map = call_info.get("user_aliases", {})
+        alias_entry = alias_map.get(sender_user.id)
+        if not alias_entry:
+            # If we don't have an alias assigned yet for this sender, assign one now
+            used_aliases = {v["name"] for v in alias_map.values()}
+            available_aliases = [p for p in POKEMON_GIFS if p["name"] not in used_aliases]
+            if not available_aliases:
+                available_aliases = POKEMON_GIFS
+            alias_entry = random.choice(available_aliases)
+            alias_map[sender_user.id] = alias_entry
+
+        alias_name = alias_entry.get("name", sender_user.display_name)
+        avatar_url = alias_entry.get("url", sender_user.display_avatar.url)
+
+        # Build content: short plain friend request plus optional message
+        content = f"💌 You have received a friend request from other caller: **{sender_discord_tag}**"
+        if message:
+            content += f"\n📨 Message: {message}"
+
         try:
+            # Send via partner's webhook but as the caller alias (username/avatar)
             await partner_webhook.send(
-                content=f"💌 You have received a friend request from other caller: **{sender_discord_tag}**"
+                content=content,
+                username=alias_name,
+                avatar_url=avatar_url
             )
             await ctx.send("✅ Your friend request has been sent to the other caller.")
         except Exception as e:
@@ -716,6 +767,10 @@ class RocketDial(commands.Cog):
         if "rocket-dial" not in message.channel.name.lower():
             return
 
+        # 🚫 Prevent relaying Rocket Dial commands (avoids duplicate friend requests, hangups, etc.)
+        if message.content.strip().startswith(".rd"):
+            return
+
         guild_id = str(message.guild.id)
         if guild_id not in self.calls:
             return
@@ -733,14 +788,13 @@ class RocketDial(commands.Cog):
         call_info["last_activity"] = asyncio.get_event_loop().time()
         target_webhook = partner_info.get("webhook")
         if not target_webhook:
-            print(f"[RocketDial] Partner webhook missing for guild {partner_id}")
+            #print(f"[RocketDial] Partner webhook missing for guild {partner_id}")
             return
 
         # ---------------------------
         # 1️⃣ Check banned users (3+ reports)
         # ---------------------------
         report_count = await self.get_report_count(member.id)
-        # In on_message
         if report_count >= 3:
             try:
                 await message.delete()
@@ -755,8 +809,6 @@ class RocketDial(commands.Cog):
                 )
             except:
                 pass
-
-            # ✅ Do NOT hang up the call for joiners
             return
 
         # ---------------------------
@@ -822,7 +874,7 @@ class RocketDial(commands.Cog):
             lower_msg = message.content.lower()
             # Allow Tenor links only for Gold Members
             if "tenor.com" in lower_msg:
-                gold_channel_id = int(os.getenv("ADMIN_GOLD_MEMBERS", 0))
+                gold_channel_id = int(os.getenv("ROCKET_DIAL_PREMIUM", 0))
                 gold_member_ids = set()
                 if gold_channel_id:
                     gold_channel = self.bot.get_channel(gold_channel_id)
@@ -843,7 +895,6 @@ class RocketDial(commands.Cog):
                             f"🚫 Sorry {member.mention}, only Premium members can send Tenor GIFs.\n"
                             "Visit RocketBot's official page to get Premium.",
                             delete_after=8
-
                         )
                     except Exception:
                         pass
@@ -865,7 +916,7 @@ class RocketDial(commands.Cog):
         censored_content = self.censor_message(message.content)
 
         # ---------------------------
-        # 7️⃣ Forward to partner
+        # 7️⃣ Forward to partner (using partner's webhook)
         # ---------------------------
         try:
             await target_webhook.send(
