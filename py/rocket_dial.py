@@ -101,10 +101,10 @@ class RocketDial(commands.Cog):
                 if wh.user == self.bot.user and wh.name == name:
                     return wh
             wh = await channel.create_webhook(name=name)
-            #print(f"[RocketDial] Created webhook '{name}' in channel {channel.name} ({channel.id}) -> {getattr(wh, 'url', 'no-url')}")
+            print(f"[RocketDial] Created webhook '{name}' in channel {channel.name} ({channel.id}) -> {getattr(wh, 'url', 'no-url')}")
             return wh
         except discord.Forbidden:
-            #print(f"[RocketDial] No permission to create webhook in {channel.name}")
+            print(f"[RocketDial] No permission to create webhook in {channel.name}")
             return None
         except Exception as e:
             print(f"[RocketDial] get_or_create_webhook error: {e}")
@@ -788,7 +788,7 @@ class RocketDial(commands.Cog):
         call_info["last_activity"] = asyncio.get_event_loop().time()
         target_webhook = partner_info.get("webhook")
         if not target_webhook:
-            #print(f"[RocketDial] Partner webhook missing for guild {partner_id}")
+            print(f"[RocketDial] Partner webhook missing for guild {partner_id}")
             return
 
         # ---------------------------
