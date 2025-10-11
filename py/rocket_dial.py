@@ -664,7 +664,7 @@ class RocketDial(commands.Cog):
         # -------------------------------
         if "report_confirmed" not in warned_set:
             await ctx.send(
-                f"✅ You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)\n"
+                f"🚨 You reported **{reported_alias}** for: {reason} ({reported_count}/3 reports)\n"
                 "📞 Call disconnected.\n"
             )
             warned_set.add("report_confirmed")
@@ -724,7 +724,7 @@ class RocketDial(commands.Cog):
         avatar_url = alias_entry.get("url", sender_user.display_avatar.url)
 
         # Build content: short plain friend request plus optional message
-        content = f"💌 You have received a friend request from other caller: **{sender_discord_tag}**"
+        content = f"🧑‍🤝‍🧑 You have received a friend request from other caller: **{sender_discord_tag}**"
         if message:
             content += f"\n📨 Message: {message}"
 
