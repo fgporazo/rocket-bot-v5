@@ -385,7 +385,7 @@ class RocketDial(commands.Cog):
 
             # --- Announce connected server if MAIN_GUILD ---
             try:
-                main_guild_id = int(os.getenv("MY_MAIN_GUILD", 0))
+                main_guild_id = int(os.getenv("MAIN_GUILD", 0))
                 this_guild = ctx.guild
                 other_guild = self.bot.get_guild(int(other_gid))
                 if this_guild.id == main_guild_id and other_guild:
